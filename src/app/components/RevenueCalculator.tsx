@@ -81,19 +81,31 @@ function InputField({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-        {label}
-        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
-          ({hint})
-        </span>
-      </label>
+      <div className="flex items-baseline justify-between">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {label}
+          <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
+            ({hint})
+          </span>
+        </label>
+        {max !== undefined && (
+          <span
+            className="text-xs text-gray-400 dark:text-gray-500"
+            aria-label={`used: ${value}, maximum: ${max}`}
+          >
+            {value} / {max}
+          </span>
+        )}
+      </div>
       <input
         type="number"
         min={0}
         max={max}
-        value={value}
+        step={1}
+        placeholder="0"
+        value={value === 0 ? "" : value}
         onChange={(e) => {
-          const val = Math.max(0, Number(e.target.value));
+          const val = Math.max(0, parseInt(e.target.value, 10) || 0);
           onChange(max !== undefined ? Math.min(val, max) : val);
         }}
         className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -183,10 +195,13 @@ export default function RevenueCalculator() {
       middlePassengers: Math.min(p.middlePassengers, shipSpecs.middleBerths),
       lowPassengers: Math.min(p.lowPassengers, shipSpecs.lowBerths),
     }));
-    setCargo((c) => ({
-      standardCargoTons: Math.min(c.standardCargoTons, shipSpecs.cargoSpace),
-      mailTons: c.mailTons,
-    }));
+    setCargo((c) => {
+      const clampedStandard = Math.min(c.standardCargoTons, shipSpecs.cargoSpace);
+      return {
+        standardCargoTons: clampedStandard,
+        mailTons: Math.min(c.mailTons, shipSpecs.cargoSpace - clampedStandard),
+      };
+    });
   }, [shipSpecs, initialized]);
 
   const passengerRevenue = {
@@ -199,6 +214,9 @@ export default function RevenueCalculator() {
     standard: cargo.standardCargoTons * RATES.standardCargo,
     mail: cargo.mailTons * RATES.mail,
   };
+
+  const maxStandardCargo = shipSpecs.cargoSpace - cargo.mailTons;
+  const maxMailCargo = shipSpecs.cargoSpace - cargo.standardCargoTons;
 
   const totalPassengerRevenue =
     passengerRevenue.high + passengerRevenue.middle + passengerRevenue.low;
@@ -367,13 +385,14 @@ export default function RevenueCalculator() {
                 setCargo((c) => ({ ...c, standardCargoTons: v }))
               }
               hint={formatCredits(RATES.standardCargo) + "/ton"}
-              max={shipSpecs.cargoSpace}
+              max={maxStandardCargo}
             />
             <InputField
               label="Mail Cargo"
               value={cargo.mailTons}
               onChange={(v) => setCargo((c) => ({ ...c, mailTons: v }))}
               hint={formatCredits(RATES.mail) + "/ton"}
+              max={maxMailCargo}
             />
           </div>
 
