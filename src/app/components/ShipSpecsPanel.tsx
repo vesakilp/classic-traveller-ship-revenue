@@ -96,8 +96,8 @@ export default function ShipSpecsPanel({
       <div className="p-6 space-y-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Configure your ship's capacity. These values control
-          auto-selection of passengers and cargo after each roll, and set
-          maximums for the manual revenue calculator below.
+          auto-selection of passengers and cargo after each roll and define
+          the limits used by the passenger and cargo tools below.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <NumberField
