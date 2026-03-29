@@ -17,19 +17,12 @@ interface PassengerResult {
   finalCount: number;
 }
 
-interface CargoLot {
-  type: "Major" | "Minor" | "Incidental";
-  sizeDie: number;
-  tons: number;
-}
-
 interface CargoResult {
   expression: string;
   diceRolled: number[];
-  baseLots: number;
+  baseCount: number;
   dm: number;
-  finalLots: number;
-  lots: CargoLot[];
+  finalCount: number;
   totalTons: number;
 }
 
@@ -203,30 +196,27 @@ function rollCargoType(
     return {
       expression: expr ? exprString(expr) : "—",
       diceRolled: [],
-      baseLots: 0,
+      baseCount: 0,
       dm,
-      finalLots: 0,
-      lots: [],
+      finalCount: 0,
       totalTons: 0,
     };
   }
   const diceRolled = rollDice(expr.count);
-  const baseLots =
+  const baseCount =
     diceRolled.reduce((a, b) => a + b, 0) + expr.constant;
-  const finalLots = Math.max(0, baseLots + dm);
+  const finalCount = Math.max(0, baseCount + dm);
   const multiplier = CARGO_MULTIPLIERS[type];
-  const lots: CargoLot[] = Array.from({ length: finalLots }, () => {
-    const sizeDie = rollD6();
-    return { type, sizeDie, tons: sizeDie * multiplier };
-  });
-  const totalTons = lots.reduce((sum, lot) => sum + lot.tons, 0);
+  const totalTons = Array.from({ length: finalCount }, rollD6).reduce(
+    (sum, die) => sum + die * multiplier,
+    0,
+  );
   return {
     expression: exprString(expr),
     diceRolled,
-    baseLots,
+    baseCount,
     dm,
-    finalLots,
-    lots,
+    finalCount,
     totalTons,
   };
 }
@@ -315,22 +305,17 @@ function WorldInputCard({
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
             Tech Level
           </label>
-          <input
-            type="number"
-            min={0}
-            max={20}
-            step={1}
+          <select
             value={tl}
-            placeholder="0"
-            onChange={(e) => {
-              const val = Math.max(
-                0,
-                Math.min(20, parseInt(e.target.value, 10) || 0),
-              );
-              onTlChange(val);
-            }}
+            onChange={(e) => onTlChange(parseInt(e.target.value, 10))}
             className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-          />
+          >
+            {Array.from({ length: 21 }, (_, i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
       {zone !== undefined && onZoneChange && (
@@ -427,7 +412,7 @@ function CargoBreakdownRow({
   result: CargoResult;
 }) {
   return (
-    <tr className={result.finalLots === 0 ? "opacity-50" : ""}>
+    <tr className={result.finalCount === 0 ? "opacity-50" : ""}>
       <td className="py-1.5 pr-3 text-sm font-medium text-gray-800 dark:text-gray-200">
         {label}
       </td>
@@ -438,13 +423,13 @@ function CargoBreakdownRow({
         <DiceDisplay dice={result.diceRolled} />
       </td>
       <td className="py-1.5 pr-3 text-sm text-right text-gray-600 dark:text-gray-400">
-        {result.diceRolled.length > 0 ? result.baseLots : "—"}
+        {result.diceRolled.length > 0 ? result.baseCount : "—"}
       </td>
       <td className="py-1.5 pr-3 text-sm text-right text-gray-600 dark:text-gray-400">
         {result.dm >= 0 ? `+${result.dm}` : result.dm}
       </td>
       <td className="py-1.5 pr-3 text-sm text-right font-bold text-amber-700 dark:text-amber-400">
-        {result.finalLots}
+        {result.finalCount}
       </td>
       <td className="py-1.5 text-sm text-right text-gray-600 dark:text-gray-400">
         {result.totalTons} t
@@ -481,12 +466,6 @@ export default function PassengerCargoRoller() {
       result.cargo.incidental.totalTons
     : 0;
 
-  const totalCargoLots = result
-    ? result.cargo.major.finalLots +
-      result.cargo.minor.finalLots +
-      result.cargo.incidental.finalLots
-    : 0;
-
   const paxRevenue = result
     ? result.passengers.high.finalCount * PASSENGER_RATES.high +
       result.passengers.middle.finalCount * PASSENGER_RATES.middle +
@@ -508,7 +487,7 @@ export default function PassengerCargoRoller() {
       <div className="p-6 space-y-6">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Enter the origin and destination world specs, then click Roll to
-          determine how many passengers and cargo lots are available for this
+          determine how many passengers and how much cargo is available for this
           jump. Modifiers for destination population, tech level difference, and
           travel zone are applied automatically.
         </p>
@@ -671,26 +650,14 @@ export default function PassengerCargoRoller() {
               {/* Cargo */}
               <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-4 space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                  📦 Cargo Lots
+                  📦 Cargo
                 </h3>
                 <div className="space-y-1">
                   {[
-                    {
-                      label: "Major",
-                      cargo: result.cargo.major,
-                      mult: CARGO_MULTIPLIERS.Major,
-                    },
-                    {
-                      label: "Minor",
-                      cargo: result.cargo.minor,
-                      mult: CARGO_MULTIPLIERS.Minor,
-                    },
-                    {
-                      label: "Incidental",
-                      cargo: result.cargo.incidental,
-                      mult: CARGO_MULTIPLIERS.Incidental,
-                    },
-                  ].map(({ label, cargo, mult }) => (
+                    { label: "Major", cargo: result.cargo.major },
+                    { label: "Minor", cargo: result.cargo.minor },
+                    { label: "Incidental", cargo: result.cargo.incidental },
+                  ].map(({ label, cargo }) => (
                     <div
                       key={label}
                       className="flex justify-between text-sm"
@@ -699,18 +666,13 @@ export default function PassengerCargoRoller() {
                         {label}
                       </span>
                       <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {cargo.finalLots} lots
-                        <span className="text-xs font-normal text-gray-400 ml-1">
-                          (×{mult} t/die)
-                        </span>
+                        {cargo.totalTons} t
                       </span>
                     </div>
                   ))}
                 </div>
                 <div className="border-t border-amber-200 dark:border-amber-800 pt-2 flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
-                  <span>
-                    {totalCargoLots} lots / {totalCargoTons} t
-                  </span>
+                  <span>Total ({totalCargoTons} t)</span>
                   <span>{formatCredits(cargoRevenue)}</span>
                 </div>
               </div>
@@ -744,47 +706,6 @@ export default function PassengerCargoRoller() {
                 </div>
               </div>
             </div>
-
-            {/* Cargo lot list */}
-            {totalCargoLots > 0 && (
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <div className="bg-gray-100 dark:bg-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                  Cargo Lot Details (each lot is a separate shipment)
-                </div>
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {(
-                    [
-                      result.cargo.major,
-                      result.cargo.minor,
-                      result.cargo.incidental,
-                    ] as CargoResult[]
-                  )
-                    .flatMap((c) => c.lots)
-                    .map((lot, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between px-4 py-2 text-sm"
-                      >
-                        <span className="text-gray-600 dark:text-gray-400">
-                          Lot #{i + 1} —{" "}
-                          <span className="font-medium text-gray-800 dark:text-gray-200">
-                            {lot.type}
-                          </span>
-                        </span>
-                        <span className="text-gray-500 dark:text-gray-400 text-xs">
-                          die {lot.sizeDie} × {CARGO_MULTIPLIERS[lot.type]}
-                        </span>
-                        <span className="font-semibold text-amber-700 dark:text-amber-400">
-                          {lot.tons} t
-                        </span>
-                        <span className="text-gray-500 dark:text-gray-400 text-xs">
-                          {formatCredits(lot.tons * CARGO_RATE)}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
 
             {/* Detailed breakdown toggle */}
             <button
@@ -847,7 +768,7 @@ export default function PassengerCargoRoller() {
                 {/* Cargo breakdown table */}
                 <div className="overflow-x-auto">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                    Cargo Lots Roll Breakdown
+                    Cargo Roll Breakdown
                   </p>
                   <table className="w-full text-xs">
                     <thead>
@@ -862,13 +783,13 @@ export default function PassengerCargoRoller() {
                           Dice
                         </th>
                         <th className="pb-1 text-right text-gray-500 dark:text-gray-400">
-                          Base lots
+                          Base
                         </th>
                         <th className="pb-1 text-right text-gray-500 dark:text-gray-400">
                           DM
                         </th>
                         <th className="pb-1 text-right text-gray-500 dark:text-gray-400">
-                          Lots
+                          Count
                         </th>
                         <th className="pb-1 text-right text-gray-500 dark:text-gray-400">
                           Tons
