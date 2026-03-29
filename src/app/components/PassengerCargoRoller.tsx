@@ -632,7 +632,7 @@ export default function PassengerCargoRoller({
         <h2 className="text-lg font-semibold text-white">
           🎲 Roll Available Passengers &amp; Cargo
         </h2>
-        <InfoTip text="Roll to see what passengers and cargo are available at the origin world for this jump. Results are auto-allocated to your ship capacity from Ship Specs above. Then use the revenue calculator below to record final bookings." />
+        <InfoTip text="Roll to see what passengers and cargo are available at the origin world for this jump. Results are auto-allocated to your ship capacity from Ship Specs above." />
       </div>
 
       <div className="p-6 space-y-6">
@@ -640,7 +640,8 @@ export default function PassengerCargoRoller({
           Enter the origin and destination world specs, then click Roll.
           Passengers will be automatically allocated to staterooms and low
           berths, and cargo shipments auto-selected to best fill cargo space
-          (both from Ship Specs above).
+          (both from Ship Specs above). Adjust any selections manually if
+          needed.
         </p>
 
         {/* World input form */}
@@ -723,6 +724,68 @@ export default function PassengerCargoRoller({
               )}
             </div>
 
+            {/* ── Dice breakdown toggle (right after DMs) ──────────────── */}
+            <button
+              type="button"
+              onClick={() => setShowDetail((v) => !v)}
+              className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
+            >
+              {showDetail ? "▲ Hide dice breakdown" : "▼ Show dice breakdown"}
+            </button>
+
+            {showDetail && (
+              <div className="space-y-4">
+                {/* Passenger breakdown table */}
+                <div className="overflow-x-auto">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                    Passenger Roll Breakdown
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Class</th>
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Expr</th>
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Dice</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Base</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">DM</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Final</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      <PassengerBreakdownRow label="High" result={result.passengers.high} />
+                      <PassengerBreakdownRow label="Middle" result={result.passengers.middle} />
+                      <PassengerBreakdownRow label="Low" result={result.passengers.low} />
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Cargo breakdown table */}
+                <div className="overflow-x-auto">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                    Cargo Roll Breakdown
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Type</th>
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Expr</th>
+                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Dice</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Base</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">DM</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Count</th>
+                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Tons</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      <CargoBreakdownRow label="Major" result={result.cargo.major} />
+                      <CargoBreakdownRow label="Minor" result={result.cargo.minor} />
+                      <CargoBreakdownRow label="Incidental" result={result.cargo.incidental} />
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* ── Passenger Revenue ───────────────────────────────────── */}
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden">
               <div className="bg-amber-50 dark:bg-amber-950 px-4 py-3 flex items-center gap-2">
@@ -770,7 +833,8 @@ export default function PassengerCargoRoller({
                       min={0}
                       max={maxAccepted}
                       step={1}
-                      value={accepted}
+                      placeholder="0"
+                      value={accepted === 0 ? "" : accepted}
                       onChange={(e) =>
                         onChange(Math.max(0, parseInt(e.target.value, 10) || 0))
                       }
@@ -816,17 +880,19 @@ export default function PassengerCargoRoller({
                   📦 Cargo Revenue
                   <InfoTip text="Each shipment is a discrete lot rolled per Book 2 rules: roll for number of lots, then one die per lot for size (Major ×10, Minor ×5, Incidental ×1 tons). Lots cannot be subdivided. Cargo space from Ship Specs above." />
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-3">
                   {[
                     { label: "Major", cargo: result.cargo.major, mult: CARGO_MULTIPLIERS.Major },
                     { label: "Minor", cargo: result.cargo.minor, mult: CARGO_MULTIPLIERS.Minor },
                     { label: "Incidental", cargo: result.cargo.incidental, mult: CARGO_MULTIPLIERS.Incidental },
                   ].map(({ label, cargo, mult }) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">{label}</span>
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                    <div key={label} className="flex flex-col gap-0.5 text-sm">
+                      <span className="font-semibold text-amber-700 dark:text-amber-400">{label}</span>
+                      <span className="text-gray-900 dark:text-gray-100">
                         {cargo.finalCount} lot{cargo.finalCount !== 1 ? "s" : ""}
-                        <span className="text-xs font-normal text-gray-400 ml-1">/ {cargo.totalTons} t (×{mult}/die)</span>
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {cargo.totalTons} t (×{mult}/die)
                       </span>
                     </div>
                   ))}
@@ -942,67 +1008,6 @@ export default function PassengerCargoRoller({
               </div>
             </div>
 
-            {/* ── Dice breakdown toggle ────────────────────────────────── */}
-            <button
-              type="button"
-              onClick={() => setShowDetail((v) => !v)}
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none"
-            >
-              {showDetail ? "▲ Hide dice breakdown" : "▼ Show dice breakdown"}
-            </button>
-
-            {showDetail && (
-              <div className="space-y-4">
-                {/* Passenger breakdown table */}
-                <div className="overflow-x-auto">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                    Passenger Roll Breakdown
-                  </p>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Class</th>
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Expr</th>
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Dice</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Base</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">DM</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Final</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      <PassengerBreakdownRow label="High" result={result.passengers.high} />
-                      <PassengerBreakdownRow label="Middle" result={result.passengers.middle} />
-                      <PassengerBreakdownRow label="Low" result={result.passengers.low} />
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Cargo breakdown table */}
-                <div className="overflow-x-auto">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
-                    Cargo Roll Breakdown
-                  </p>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Type</th>
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Expr</th>
-                        <th className="pb-1 text-left text-gray-500 dark:text-gray-400">Dice</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Base</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">DM</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Count</th>
-                        <th className="pb-1 text-right text-gray-500 dark:text-gray-400">Tons</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      <CargoBreakdownRow label="Major" result={result.cargo.major} />
-                      <CargoBreakdownRow label="Minor" result={result.cargo.minor} />
-                      <CargoBreakdownRow label="Incidental" result={result.cargo.incidental} />
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

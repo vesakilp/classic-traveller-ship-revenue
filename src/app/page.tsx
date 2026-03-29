@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import ShipSpecsPanel from "./components/ShipSpecsPanel";
 import PassengerCargoRoller from "./components/PassengerCargoRoller";
-import RevenueCalculator from "./components/RevenueCalculator";
 import {
   ShipSpecs,
   DEFAULT_SHIP_SPECS,
@@ -43,19 +42,15 @@ export default function Home() {
             Ship Revenue Calculator
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Configure your ship, roll for available passengers and cargo, then
-            track actual revenue.
+            Configure your ship, then roll for available passengers and cargo.
           </p>
         </header>
 
-        {/* 1. Ship specs — shared by roller and manual calculator */}
+        {/* 1. Ship specs — shared by roller */}
         <ShipSpecsPanel value={shipSpecs} onChange={setShipSpecs} />
 
-        {/* 2. Roll available passengers & cargo (uses ship specs for auto-selection) */}
+        {/* 2. Roll available passengers & cargo */}
         <PassengerCargoRoller shipSpecs={shipSpecs} />
-
-        {/* 3. Manual revenue calculator (uses ship specs for capacity limits) */}
-        <RevenueCalculator shipSpecs={shipSpecs} />
       </div>
     </main>
   );
