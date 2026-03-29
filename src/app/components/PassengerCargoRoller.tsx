@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ShipSpecs } from "../types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,12 @@ interface RollResult {
     incidental: CargoResult;
   };
   dms: DmBreakdown;
+}
+
+interface AcceptedPassengers {
+  high: number;
+  middle: number;
+  low: number;
 }
 
 // ─── Classic Traveller Book 2 tables ─────────────────────────────────────────
@@ -123,7 +130,7 @@ function popToIndex(pop: string): number {
   return pop === "A" ? 10 : parseInt(pop, 10);
 }
 
-// ─── Auto-select cargo (greedy best-fit) ─────────────────────────────────────
+// ─── Auto-select helpers ──────────────────────────────────────────────────────
 
 /**
  * Select cargo lots to maximise accepted tonnage within `cargoSpace`.
@@ -146,6 +153,34 @@ function autoSelectLots(lots: CargoLot[], cargoSpace: number): Set<string> {
     }
   }
   return selected;
+}
+
+/**
+ * Auto-distribute rolled passengers to ship accommodation for best revenue.
+ * High passengers (Cr10,000) fill staterooms first; Middle (Cr8,000) take
+ * any remaining staterooms; Low (Cr1,000) fill low berths.
+ * If a capacity is 0 (not configured) there is no constraint for that class.
+ */
+function autoDistributePassengers(
+  result: RollResult,
+  specs: ShipSpecs,
+): AcceptedPassengers {
+  const h =
+    specs.staterooms > 0
+      ? Math.min(result.passengers.high.finalCount, specs.staterooms)
+      : result.passengers.high.finalCount;
+  const m =
+    specs.staterooms > 0
+      ? Math.min(
+          result.passengers.middle.finalCount,
+          Math.max(0, specs.staterooms - h),
+        )
+      : result.passengers.middle.finalCount;
+  const l =
+    specs.lowBerths > 0
+      ? Math.min(result.passengers.low.finalCount, specs.lowBerths)
+      : result.passengers.low.finalCount;
+  return { high: h, middle: m, low: l };
 }
 
 /** Returns true if accepting `lot` would push accepted tonnage over `space`. */
@@ -277,7 +312,6 @@ function performRoll(
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Small inline info tooltip shown on click. */
 function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -462,29 +496,36 @@ function CargoBreakdownRow({ label, result }: { label: string; result: CargoResu
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+const DEFAULT_ACCEPTED_PASSENGERS: AcceptedPassengers = { high: 0, middle: 0, low: 0 };
 
-export default function PassengerCargoRoller() {
+export default function PassengerCargoRoller({
+  shipSpecs,
+}: {
+  shipSpecs: ShipSpecs;
+}) {
   const [originPop, setOriginPop] = useState("6");
   const [originTL, setOriginTL] = useState(8);
   const [destPop, setDestPop] = useState("5");
   const [destTL, setDestTL] = useState(7);
   const [destZone, setDestZone] = useState<TravelZone>("Green");
-  const [cargoSpace, setCargoSpace] = useState(0);
   const [result, setResult] = useState<RollResult | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [acceptedPassengers, setAcceptedPassengers] = useState<AcceptedPassengers>(DEFAULT_ACCEPTED_PASSENGERS);
   const [acceptedLotIds, setAcceptedLotIds] = useState<Set<string>>(new Set());
 
   function handleRoll() {
     const newResult = performRoll(originPop, originTL, destPop, destTL, destZone);
     setResult(newResult);
+    // Auto-distribute passengers to accommodation (High first for best revenue)
+    setAcceptedPassengers(autoDistributePassengers(newResult, shipSpecs));
+    // Auto-select cargo lots to best fill cargo space from ship specs
     const allNewLots = [
       ...newResult.cargo.major.lots,
       ...newResult.cargo.minor.lots,
       ...newResult.cargo.incidental.lots,
     ];
-    // Auto-select best-fitting lots; leave showDetail unchanged
-    setAcceptedLotIds(autoSelectLots(allNewLots, cargoSpace));
+    setAcceptedLotIds(autoSelectLots(allNewLots, shipSpecs.cargoSpace));
+    // Leave showDetail unchanged
   }
 
   const allLots: CargoLot[] = result
@@ -495,6 +536,57 @@ export default function PassengerCargoRoller() {
       ]
     : [];
 
+  // Max accepted for each passenger class given current state
+  function maxHighAccepted(): number {
+    if (!result) return 0;
+    const fromRoll = result.passengers.high.finalCount;
+    if (shipSpecs.staterooms <= 0) return fromRoll;
+    return Math.min(fromRoll, Math.max(0, shipSpecs.staterooms - acceptedPassengers.middle));
+  }
+  function maxMiddleAccepted(): number {
+    if (!result) return 0;
+    const fromRoll = result.passengers.middle.finalCount;
+    if (shipSpecs.staterooms <= 0) return fromRoll;
+    return Math.min(fromRoll, Math.max(0, shipSpecs.staterooms - acceptedPassengers.high));
+  }
+  function maxLowAccepted(): number {
+    if (!result) return 0;
+    const fromRoll = result.passengers.low.finalCount;
+    if (shipSpecs.lowBerths <= 0) return fromRoll;
+    return Math.min(fromRoll, shipSpecs.lowBerths);
+  }
+
+  function changeHigh(v: number) {
+    const clamped = Math.max(0, Math.min(v, maxHighAccepted()));
+    setAcceptedPassengers((prev) => ({
+      ...prev,
+      high: clamped,
+      // Re-clamp middle in case staterooms constraint changed
+      middle:
+        shipSpecs.staterooms > 0
+          ? Math.min(prev.middle, Math.max(0, shipSpecs.staterooms - clamped))
+          : prev.middle,
+    }));
+  }
+  function changeMiddle(v: number) {
+    const clamped = Math.max(0, Math.min(v, maxMiddleAccepted()));
+    setAcceptedPassengers((prev) => ({
+      ...prev,
+      middle: clamped,
+      // Re-clamp high in case staterooms constraint changed
+      high:
+        shipSpecs.staterooms > 0
+          ? Math.min(prev.high, Math.max(0, shipSpecs.staterooms - clamped))
+          : prev.high,
+    }));
+  }
+  function changeLow(v: number) {
+    setAcceptedPassengers((prev) => ({
+      ...prev,
+      low: Math.max(0, Math.min(v, maxLowAccepted())),
+    }));
+  }
+
   function toggleLot(id: string) {
     const lot = allLots.find((l) => l.id === id);
     if (!lot) return;
@@ -503,24 +595,16 @@ export default function PassengerCargoRoller() {
       if (next.has(id)) {
         next.delete(id);
       } else {
-        // Prevent adding if it would exceed cargo space
-        if (cargoSpace > 0) {
-          const currentTons = [...prev]
-            .map((lid) => allLots.find((l) => l.id === lid)?.tons ?? 0)
-            .reduce((s, t) => s + t, 0);
-          if (lotExceedsSpace(lot, currentTons, cargoSpace)) return prev;
-        }
+        // Prevent adding if it would exceed cargo space from ship specs
+        const currentTons = [...prev]
+          .map((lid) => allLots.find((l) => l.id === lid)?.tons ?? 0)
+          .reduce((s, t) => s + t, 0);
+        if (lotExceedsSpace(lot, currentTons, shipSpecs.cargoSpace)) return prev;
         next.add(id);
       }
       return next;
     });
   }
-
-  const totalPax = result
-    ? result.passengers.high.finalCount +
-      result.passengers.middle.finalCount +
-      result.passengers.low.finalCount
-    : 0;
 
   const acceptedTons = allLots
     .filter((l) => acceptedLotIds.has(l.id))
@@ -528,11 +612,15 @@ export default function PassengerCargoRoller() {
 
   const availableTons = allLots.reduce((sum, l) => sum + l.tons, 0);
 
-  const paxRevenue = result
-    ? result.passengers.high.finalCount * PASSENGER_RATES.high +
-      result.passengers.middle.finalCount * PASSENGER_RATES.middle +
-      result.passengers.low.finalCount * PASSENGER_RATES.low
-    : 0;
+  const totalAcceptedPax =
+    acceptedPassengers.high + acceptedPassengers.middle + acceptedPassengers.low;
+  const usedStateroomsAfterRoll =
+    acceptedPassengers.high + acceptedPassengers.middle;
+
+  const paxRevenue =
+    acceptedPassengers.high * PASSENGER_RATES.high +
+    acceptedPassengers.middle * PASSENGER_RATES.middle +
+    acceptedPassengers.low * PASSENGER_RATES.low;
 
   const cargoRevenue = acceptedTons * CARGO_RATE;
   const totalRevenue = paxRevenue + cargoRevenue;
@@ -544,15 +632,15 @@ export default function PassengerCargoRoller() {
         <h2 className="text-lg font-semibold text-white">
           🎲 Roll Available Passengers &amp; Cargo
         </h2>
-        <InfoTip text="Step 1 of 2: Roll to see what passengers and cargo are available at the origin world for this jump. Then use the revenue calculator below to record what your ship actually carries." />
+        <InfoTip text="Roll to see what passengers and cargo are available at the origin world for this jump. Results are auto-allocated to your ship capacity from Ship Specs above. Then use the revenue calculator below to record final bookings." />
       </div>
 
       <div className="p-6 space-y-6">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Enter the origin and destination world specs, then click Roll to
-          determine how many passengers and how much cargo is available for this
-          jump. Modifiers for destination population, tech level difference, and
-          travel zone are applied automatically.
+          Enter the origin and destination world specs, then click Roll.
+          Passengers will be automatically allocated to staterooms and low
+          berths, and cargo shipments auto-selected to best fill cargo space
+          (both from Ship Specs above).
         </p>
 
         {/* World input form */}
@@ -635,67 +723,98 @@ export default function PassengerCargoRoller() {
               )}
             </div>
 
-            {/* Top row: Passengers + Revenue */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Passengers card */}
-              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-4 space-y-2">
+            {/* ── Passenger Revenue ───────────────────────────────────── */}
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden">
+              <div className="bg-amber-50 dark:bg-amber-950 px-4 py-3 flex items-center gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center">
-                  🚀 Passengers
-                  <InfoTip text="High Passage (Cr10,000): private stateroom, full service. Middle Passage (Cr8,000): stateroom without full service. Low Passage (Cr1,000): low berth suspended animation." />
+                  🚀 Passenger Revenue
+                  <InfoTip text="Passengers auto-allocated for best revenue: High (Cr10,000) fills staterooms first, then Middle (Cr8,000) takes remaining staterooms, Low (Cr1,000) fills low berths. Adjust counts manually if needed. Capacity from Ship Specs above." />
                 </h3>
-                <div className="space-y-1">
-                  {[
-                    { label: "High", count: result.passengers.high.finalCount, rate: PASSENGER_RATES.high },
-                    { label: "Middle", count: result.passengers.middle.finalCount, rate: PASSENGER_RATES.middle },
-                    { label: "Low", count: result.passengers.low.finalCount, rate: PASSENGER_RATES.low },
-                  ].map(({ label, count, rate }) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">{label}</span>
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {count}
-                        <span className="text-xs font-normal text-gray-400 ml-1">×{formatCredits(rate)}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-amber-200 dark:border-amber-800 pt-2 flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
-                  <span>Total ({totalPax} pax)</span>
-                  <span>{formatCredits(paxRevenue)}</span>
-                </div>
               </div>
-
-              {/* Revenue card */}
-              <div className="rounded-lg border-2 border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950 p-4 space-y-2 flex flex-col justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-400 flex items-center">
-                  💰 Potential Revenue
-                  <InfoTip text="Revenue if all passengers are booked and all accepted cargo shipments are loaded. Use the cargo space field below to filter which shipments to accept." />
-                </h3>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Passengers</span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCredits(paxRevenue)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">
-                      Cargo ({acceptedTons} t accepted)
+              <div className="p-4 space-y-3">
+                {/* Passenger rows */}
+                {(
+                  [
+                    {
+                      label: "High",
+                      available: result.passengers.high.finalCount,
+                      accepted: acceptedPassengers.high,
+                      onChange: changeHigh,
+                      maxAccepted: maxHighAccepted(),
+                      rate: PASSENGER_RATES.high,
+                    },
+                    {
+                      label: "Middle",
+                      available: result.passengers.middle.finalCount,
+                      accepted: acceptedPassengers.middle,
+                      onChange: changeMiddle,
+                      maxAccepted: maxMiddleAccepted(),
+                      rate: PASSENGER_RATES.middle,
+                    },
+                    {
+                      label: "Low",
+                      available: result.passengers.low.finalCount,
+                      accepted: acceptedPassengers.low,
+                      onChange: changeLow,
+                      maxAccepted: maxLowAccepted(),
+                      rate: PASSENGER_RATES.low,
+                    },
+                  ] as const
+                ).map(({ label, available, accepted, onChange, maxAccepted, rate }) => (
+                  <div key={label} className="flex items-center gap-3 text-sm">
+                    <span className="w-14 font-medium text-gray-700 dark:text-gray-300">
+                      {label}
                     </span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCredits(cargoRevenue)}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={maxAccepted}
+                      step={1}
+                      value={accepted}
+                      onChange={(e) =>
+                        onChange(Math.max(0, parseInt(e.target.value, 10) || 0))
+                      }
+                      className="w-16 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-1">
+                      / {available} available
+                    </span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+                      ×{formatCredits(rate)}
+                    </span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 text-right w-24">
+                      {formatCredits(accepted * rate)}
+                    </span>
                   </div>
-                </div>
-                <div className="border-t border-indigo-200 dark:border-indigo-800 pt-2 flex justify-between font-bold text-indigo-700 dark:text-indigo-300">
-                  <span>Total</span>
-                  <span className="text-lg">{formatCredits(totalRevenue)}</span>
+                ))}
+
+                {/* Totals + capacity */}
+                <div className="border-t border-amber-200 dark:border-amber-800 pt-3 space-y-1">
+                  <div className="flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
+                    <span>Total ({totalAcceptedPax} pax accepted)</span>
+                    <span>{formatCredits(paxRevenue)}</span>
+                  </div>
+                  {shipSpecs.staterooms > 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Staterooms: {usedStateroomsAfterRoll} / {shipSpecs.staterooms} used
+                    </p>
+                  )}
+                  {shipSpecs.lowBerths > 0 && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      Low berths: {acceptedPassengers.low} / {shipSpecs.lowBerths} used
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Cargo section (full width) */}
+            {/* ── Cargo Revenue ────────────────────────────────────────── */}
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden">
               {/* Cargo summary header */}
-              <div className="bg-amber-50 dark:bg-amber-950 p-4 space-y-2">
+              <div className="bg-amber-50 dark:bg-amber-950 px-4 py-3 space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center">
-                  📦 Cargo
-                  <InfoTip text="Each shipment is a discrete lot rolled per Book 2 rules: first roll the number of lots, then roll one die per lot for size (Major ×10, Minor ×5, Incidental ×1 tons). Lots cannot be subdivided." />
+                  📦 Cargo Revenue
+                  <InfoTip text="Each shipment is a discrete lot rolled per Book 2 rules: roll for number of lots, then one die per lot for size (Major ×10, Minor ×5, Incidental ×1 tons). Lots cannot be subdivided. Cargo space from Ship Specs above." />
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -713,49 +832,29 @@ export default function PassengerCargoRoller() {
                   ))}
                 </div>
                 <div className="border-t border-amber-200 dark:border-amber-800 pt-2 flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
-                  <span>Available ({availableTons} t in {allLots.length} shipment{allLots.length !== 1 ? "s" : ""})</span>
-                  <span>{acceptedLotIds.size} accepted · {acceptedTons} t</span>
+                  <span>
+                    Available ({availableTons} t · {allLots.length} shipment{allLots.length !== 1 ? "s" : ""})
+                  </span>
+                  <span>
+                    {acceptedLotIds.size} accepted · {acceptedTons} t
+                    {shipSpecs.cargoSpace > 0 && (
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">
+                        / {shipSpecs.cargoSpace} t
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
 
-              {/* Cargo space input + shipments list */}
+              {/* Shipments list */}
               <div className="border-t border-amber-200 dark:border-amber-800">
-                {/* Cargo space input bar */}
-                <div className="bg-white dark:bg-gray-900 px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800">
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap flex items-center">
-                    Cargo space available (tons)
-                    <InfoTip text="Enter your ship's available cargo hold in tons. Shipments will be auto-selected on each roll to best fill this space. You can still manually adjust. Set to 0 for no constraint." />
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="0 = no limit"
-                    value={cargoSpace === 0 ? "" : cargoSpace}
-                    onChange={(e) => {
-                      const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                      setCargoSpace(v);
-                    }}
-                    className="w-32 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                  {cargoSpace > 0 && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {acceptedTons} / {cargoSpace} t used
-                      {acceptedTons > cargoSpace && (
-                        <span className="ml-1 text-red-500 font-medium">⚠ over capacity</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-
-                {/* Shipments checklist */}
                 {allLots.length > 0 ? (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {allLots.map((lot, i) => {
                       const accepted = acceptedLotIds.has(lot.id);
                       const wouldExceed =
                         !accepted &&
-                        lotExceedsSpace(lot, acceptedTons, cargoSpace);
+                        lotExceedsSpace(lot, acceptedTons, shipSpecs.cargoSpace);
                       const typeBadge: Record<CargoLot["type"], string> = {
                         Major: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
                         Minor: "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
@@ -764,7 +863,11 @@ export default function PassengerCargoRoller() {
                       return (
                         <label
                           key={lot.id}
-                          title={wouldExceed ? `Adding this shipment would exceed your ${cargoSpace} t cargo space` : undefined}
+                          title={
+                            wouldExceed
+                              ? `Adding this shipment would exceed your ${shipSpecs.cargoSpace} t cargo space`
+                              : undefined
+                          }
                           className={`flex items-center justify-between px-4 py-2 text-sm transition-colors ${
                             wouldExceed
                               ? "opacity-40 cursor-not-allowed bg-gray-50 dark:bg-gray-800"
@@ -808,10 +911,38 @@ export default function PassengerCargoRoller() {
                     No cargo available for this route.
                   </p>
                 )}
+
+                {/* Cargo revenue total */}
+                <div className="bg-amber-50 dark:bg-amber-950 border-t border-amber-200 dark:border-amber-800 px-4 py-3 flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
+                  <span>Total Cargo Revenue ({acceptedTons} t accepted)</span>
+                  <span>{formatCredits(cargoRevenue)}</span>
+                </div>
               </div>
             </div>
 
-            {/* Detailed breakdown toggle */}
+            {/* ── Total Revenue card ───────────────────────────────────── */}
+            <div className="rounded-lg border-2 border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950 p-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-400 mb-3 flex items-center">
+                💰 Total Potential Revenue
+                <InfoTip text="Combined revenue from accepted passengers and cargo shipments. Adjust passenger counts or uncheck cargo lots to see the impact." />
+              </h3>
+              <div className="space-y-1 mb-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Passengers ({totalAcceptedPax} pax)</span>
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCredits(paxRevenue)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Cargo ({acceptedTons} t)</span>
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">{formatCredits(cargoRevenue)}</span>
+                </div>
+              </div>
+              <div className="border-t border-indigo-200 dark:border-indigo-800 pt-2 flex justify-between font-bold text-indigo-700 dark:text-indigo-300">
+                <span>Total</span>
+                <span className="text-xl">{formatCredits(totalRevenue)}</span>
+              </div>
+            </div>
+
+            {/* ── Dice breakdown toggle ────────────────────────────────── */}
             <button
               type="button"
               onClick={() => setShowDetail((v) => !v)}
