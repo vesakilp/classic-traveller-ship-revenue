@@ -1,6 +1,35 @@
-import RevenueCalculator from "./components/RevenueCalculator";
+"use client";
+
+import { useState, useEffect } from "react";
+import ShipSpecsPanel from "./components/ShipSpecsPanel";
+import PassengerCargoRoller from "./components/PassengerCargoRoller";
+import {
+  ShipSpecs,
+  DEFAULT_SHIP_SPECS,
+  SHIP_SPECS_STORAGE_KEY,
+} from "./types";
 
 export default function Home() {
+  const [shipSpecs, setShipSpecs] = useState<ShipSpecs>(DEFAULT_SHIP_SPECS);
+  const [initialized, setInitialized] = useState(false);
+
+  // Load ship specs from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SHIP_SPECS_STORAGE_KEY);
+      if (stored) setShipSpecs(JSON.parse(stored) as ShipSpecs);
+    } catch {
+      // ignore parse errors
+    }
+    setInitialized(true);
+  }, []);
+
+  // Persist ship specs whenever they change (skip before first load)
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(SHIP_SPECS_STORAGE_KEY, JSON.stringify(shipSpecs));
+  }, [shipSpecs, initialized]);
+
   return (
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 py-10 px-4">
       <div className="mx-auto max-w-3xl space-y-6">
@@ -13,12 +42,15 @@ export default function Home() {
             Ship Revenue Calculator
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Enter the number of passengers and cargo tonnage to calculate total
-            revenue for a single jump.
+            Configure your ship, then roll for available passengers and cargo.
           </p>
         </header>
 
-        <RevenueCalculator />
+        {/* 1. Ship specs — shared by roller */}
+        <ShipSpecsPanel value={shipSpecs} onChange={setShipSpecs} />
+
+        {/* 2. Roll available passengers & cargo */}
+        <PassengerCargoRoller shipSpecs={shipSpecs} />
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ShipSpecs } from "../types";
 
 // Classic Traveller passenger and cargo rates (Credits per jump)
 const RATES = {
@@ -10,13 +11,6 @@ const RATES = {
   standardCargo: 1_000, // per ton
   mail: 25_000, // per ton (Cr25 per kg)
 } as const;
-
-interface ShipSpecs {
-  cargoSpace: number;
-  highBerths: number;
-  middleBerths: number;
-  lowBerths: number;
-}
 
 interface PassengerInputs {
   highPassengers: number;
@@ -28,13 +22,6 @@ interface CargoInputs {
   standardCargoTons: number;
   mailTons: number;
 }
-
-const DEFAULT_SHIP_SPECS: ShipSpecs = {
-  cargoSpace: 0,
-  highBerths: 0,
-  middleBerths: 0,
-  lowBerths: 0,
-};
 
 const DEFAULT_PASSENGERS: PassengerInputs = {
   highPassengers: 0,
@@ -48,7 +35,6 @@ const DEFAULT_CARGO: CargoInputs = {
 };
 
 const STORAGE_KEYS = {
-  shipSpecs: "traveller-ship-specs",
   passengers: "traveller-passengers",
   cargo: "traveller-cargo",
 };
@@ -66,24 +52,64 @@ function formatCredits(amount: number): string {
   return `Cr${amount.toLocaleString()}`;
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function InfoTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block align-middle">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900 dark:hover:text-amber-300 text-xs font-bold focus:outline-none transition-colors"
+        aria-label="More information"
+      >
+        ?
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 left-6 top-0 w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
+          role="tooltip"
+        >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute top-1.5 right-1.5 text-gray-400 hover:text-white leading-none"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          <p className="pr-4">{text}</p>
+        </div>
+      )}
+    </span>
+  );
+}
+
 function InputField({
   label,
   value,
   onChange,
   hint,
   max,
+  infoText,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   hint: string;
   max?: number;
+  infoText?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
           {label}
+          {infoText && <InfoTip text={infoText} />}
           <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">
             ({hint})
           </span>
@@ -145,13 +171,17 @@ function RevenueRow({
   );
 }
 
-export default function RevenueCalculator() {
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function RevenueCalculator({
+  shipSpecs,
+}: {
+  shipSpecs: ShipSpecs;
+}) {
   // initialized tracks whether localStorage has been read; persist/clamp
   // effects are skipped until true to avoid overwriting stored data with
   // default values on the first render.
   const [initialized, setInitialized] = useState(false);
-
-  const [shipSpecs, setShipSpecs] = useState<ShipSpecs>(DEFAULT_SHIP_SPECS);
 
   const [passengers, setPassengers] = useState<PassengerInputs>(
     DEFAULT_PASSENGERS,
@@ -159,9 +189,8 @@ export default function RevenueCalculator() {
 
   const [cargo, setCargo] = useState<CargoInputs>(DEFAULT_CARGO);
 
-  // Load all state from localStorage on mount
+  // Load passengers and cargo from localStorage on mount
   useEffect(() => {
-    setShipSpecs(loadFromStorage(STORAGE_KEYS.shipSpecs, DEFAULT_SHIP_SPECS));
     setPassengers(
       loadFromStorage(STORAGE_KEYS.passengers, DEFAULT_PASSENGERS),
     );
@@ -169,34 +198,41 @@ export default function RevenueCalculator() {
     setInitialized(true);
   }, []);
 
-  // Persist ship specs to localStorage (skip before initial load completes)
-  useEffect(() => {
-    if (!initialized) return;
-    localStorage.setItem(STORAGE_KEYS.shipSpecs, JSON.stringify(shipSpecs));
-  }, [shipSpecs, initialized]);
-
-  // Persist passengers to localStorage (skip before initial load completes)
+  // Persist passengers to localStorage
   useEffect(() => {
     if (!initialized) return;
     localStorage.setItem(STORAGE_KEYS.passengers, JSON.stringify(passengers));
   }, [passengers, initialized]);
 
-  // Persist cargo to localStorage (skip before initial load completes)
+  // Persist cargo to localStorage
   useEffect(() => {
     if (!initialized) return;
     localStorage.setItem(STORAGE_KEYS.cargo, JSON.stringify(cargo));
   }, [cargo, initialized]);
 
-  // Clamp passengers and cargo when ship specs are reduced (skip on initial mount)
+  // Clamp passengers and cargo when ship specs change (skip on initial mount)
   useEffect(() => {
     if (!initialized) return;
-    setPassengers((p) => ({
-      highPassengers: Math.min(p.highPassengers, shipSpecs.highBerths),
-      middlePassengers: Math.min(p.middlePassengers, shipSpecs.middleBerths),
-      lowPassengers: Math.min(p.lowPassengers, shipSpecs.lowBerths),
-    }));
+    setPassengers((p) => {
+      // High and Middle share staterooms. High passengers are clamped first so
+      // that existing High bookings are preserved when staterooms are reduced;
+      // Middle passengers receive whatever capacity remains.
+      const clampedHigh = Math.min(p.highPassengers, shipSpecs.staterooms);
+      const clampedMiddle = Math.min(
+        p.middlePassengers,
+        Math.max(0, shipSpecs.staterooms - clampedHigh),
+      );
+      return {
+        highPassengers: clampedHigh,
+        middlePassengers: clampedMiddle,
+        lowPassengers: Math.min(p.lowPassengers, shipSpecs.lowBerths),
+      };
+    });
     setCargo((c) => {
-      const clampedStandard = Math.min(c.standardCargoTons, shipSpecs.cargoSpace);
+      const clampedStandard = Math.min(
+        c.standardCargoTons,
+        shipSpecs.cargoSpace,
+      );
       return {
         standardCargoTons: clampedStandard,
         mailTons: Math.min(c.mailTons, shipSpecs.cargoSpace - clampedStandard),
@@ -215,6 +251,16 @@ export default function RevenueCalculator() {
     mail: cargo.mailTons * RATES.mail,
   };
 
+  const usedStateroomCount =
+    passengers.highPassengers + passengers.middlePassengers;
+  const maxHighPassengers = Math.max(
+    0,
+    shipSpecs.staterooms - passengers.middlePassengers,
+  );
+  const maxMiddlePassengers = Math.max(
+    0,
+    shipSpecs.staterooms - passengers.highPassengers,
+  );
   const maxStandardCargo = shipSpecs.cargoSpace - cargo.mailTons;
   const maxMailCargo = shipSpecs.cargoSpace - cargo.standardCargoTons;
 
@@ -225,61 +271,13 @@ export default function RevenueCalculator() {
 
   return (
     <div className="space-y-8">
-      {/* Ship Specifications Section */}
-      <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        <div className="bg-gray-700 px-6 py-3">
-          <h2 className="text-lg font-semibold text-white">
-            🚢 Ship Specifications
-          </h2>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Configure your ship&apos;s capacity. These values set the maximums
-            for passenger and cargo selection below and are saved automatically.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <InputField
-              label="Cargo Space"
-              value={shipSpecs.cargoSpace}
-              onChange={(v) =>
-                setShipSpecs((s) => ({ ...s, cargoSpace: v }))
-              }
-              hint="tons"
-            />
-            <InputField
-              label="High Berths"
-              value={shipSpecs.highBerths}
-              onChange={(v) =>
-                setShipSpecs((s) => ({ ...s, highBerths: v }))
-              }
-              hint="staterooms"
-            />
-            <InputField
-              label="Middle Berths"
-              value={shipSpecs.middleBerths}
-              onChange={(v) =>
-                setShipSpecs((s) => ({ ...s, middleBerths: v }))
-              }
-              hint="staterooms"
-            />
-            <InputField
-              label="Low Berths"
-              value={shipSpecs.lowBerths}
-              onChange={(v) =>
-                setShipSpecs((s) => ({ ...s, lowBerths: v }))
-              }
-              hint="capsules"
-            />
-          </div>
-        </div>
-      </section>
-
       {/* Passenger Section */}
       <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        <div className="bg-amber-600 px-6 py-3">
+        <div className="bg-amber-600 px-6 py-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-white">
             🚀 Passenger Revenue
           </h2>
+          <InfoTip text="High and Middle passengers each occupy one stateroom (configured in Ship Specs above). Low passengers use low berth capsules (suspended animation, Cr1,000/jump)." />
         </div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -290,7 +288,8 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, highPassengers: v }))
               }
               hint={formatCredits(RATES.highPassage) + "/jump"}
-              max={shipSpecs.highBerths}
+              max={shipSpecs.staterooms > 0 ? maxHighPassengers : undefined}
+              infoText="High Passage: Cr10,000 per jump. Passenger receives a private stateroom and full steward service. Counts against stateroom capacity."
             />
             <InputField
               label="Middle Passage"
@@ -299,7 +298,8 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, middlePassengers: v }))
               }
               hint={formatCredits(RATES.middlePassage) + "/jump"}
-              max={shipSpecs.middleBerths}
+              max={shipSpecs.staterooms > 0 ? maxMiddlePassengers : undefined}
+              infoText="Middle Passage: Cr8,000 per jump. Passenger uses a stateroom but without full service. Counts against stateroom capacity (shared with High Passage)."
             />
             <InputField
               label="Low Passage"
@@ -308,9 +308,21 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, lowPassengers: v }))
               }
               hint={formatCredits(RATES.lowPassage) + "/jump"}
-              max={shipSpecs.lowBerths}
+              max={shipSpecs.lowBerths > 0 ? shipSpecs.lowBerths : undefined}
+              infoText="Low Passage: Cr1,000 per jump. Passenger travels in suspended animation in a low berth capsule. Small risk of death on revival."
             />
           </div>
+
+          {shipSpecs.staterooms > 0 && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Staterooms used: {usedStateroomCount} / {shipSpecs.staterooms}
+              {usedStateroomCount > shipSpecs.staterooms && (
+                <span className="ml-2 text-red-500 font-medium">
+                  ⚠ exceeds capacity
+                </span>
+              )}
+            </p>
+          )}
 
           <div className="mt-4 overflow-x-auto">
             <table className="w-full">
@@ -373,8 +385,9 @@ export default function RevenueCalculator() {
 
       {/* Cargo Section */}
       <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        <div className="bg-amber-700 px-6 py-3">
+        <div className="bg-amber-700 px-6 py-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-white">📦 Cargo Revenue</h2>
+          <InfoTip text="Standard Freight at Cr1,000/ton. Mail at Cr25,000/ton (Cr25 per kg). Combined tonnage cannot exceed your ship's cargo space configured in Ship Specs above." />
         </div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -385,14 +398,16 @@ export default function RevenueCalculator() {
                 setCargo((c) => ({ ...c, standardCargoTons: v }))
               }
               hint={formatCredits(RATES.standardCargo) + "/ton"}
-              max={maxStandardCargo}
+              max={shipSpecs.cargoSpace > 0 ? maxStandardCargo : undefined}
+              infoText="Basic cargo at Cr1,000 per ton. The maximum is your cargo space minus any tons already allocated to mail."
             />
             <InputField
               label="Mail Cargo"
               value={cargo.mailTons}
               onChange={(v) => setCargo((c) => ({ ...c, mailTons: v }))}
               hint={formatCredits(RATES.mail) + "/ton"}
-              max={maxMailCargo}
+              max={shipSpecs.cargoSpace > 0 ? maxMailCargo : undefined}
+              infoText="Mail at Cr25,000 per ton (Cr25/kg). Highly lucrative but requires a Naval or Scout base at origin or destination. The maximum is your cargo space minus standard freight."
             />
           </div>
 
