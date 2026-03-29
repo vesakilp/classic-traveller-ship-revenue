@@ -1,4 +1,5 @@
 import RevenueCalculator from "./components/RevenueCalculator";
+import PassengerCargoRoller from "./components/PassengerCargoRoller";
 
 export default function Home() {
   return (
@@ -13,10 +14,12 @@ export default function Home() {
             Ship Revenue Calculator
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Enter the number of passengers and cargo tonnage to calculate total
-            revenue for a single jump.
+            Roll available passengers and cargo for a jump, then enter the
+            actual bookings below to calculate total revenue.
           </p>
         </header>
+
+        <PassengerCargoRoller />
 
         <RevenueCalculator />
       </div>
