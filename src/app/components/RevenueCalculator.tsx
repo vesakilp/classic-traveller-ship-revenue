@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // Classic Traveller passenger and cargo rates (Credits per jump)
 const RATES = {
@@ -10,6 +10,13 @@ const RATES = {
   standardCargo: 1_000, // per ton
   mail: 25_000, // per ton (Cr25 per kg)
 } as const;
+
+interface ShipSpecs {
+  cargoSpace: number;
+  highBerths: number;
+  middleBerths: number;
+  lowBerths: number;
+}
 
 interface PassengerInputs {
   highPassengers: number;
@@ -22,6 +29,39 @@ interface CargoInputs {
   mailTons: number;
 }
 
+const DEFAULT_SHIP_SPECS: ShipSpecs = {
+  cargoSpace: 0,
+  highBerths: 0,
+  middleBerths: 0,
+  lowBerths: 0,
+};
+
+const DEFAULT_PASSENGERS: PassengerInputs = {
+  highPassengers: 0,
+  middlePassengers: 0,
+  lowPassengers: 0,
+};
+
+const DEFAULT_CARGO: CargoInputs = {
+  standardCargoTons: 0,
+  mailTons: 0,
+};
+
+const STORAGE_KEYS = {
+  shipSpecs: "traveller-ship-specs",
+  passengers: "traveller-passengers",
+  cargo: "traveller-cargo",
+};
+
+function loadFromStorage<T>(key: string, defaultValue: T): T {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? (JSON.parse(item) as T) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
 function formatCredits(amount: number): string {
   return `Cr${amount.toLocaleString()}`;
 }
@@ -31,11 +71,13 @@ function InputField({
   value,
   onChange,
   hint,
+  max,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   hint: string;
+  max?: number;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -48,8 +90,12 @@ function InputField({
       <input
         type="number"
         min={0}
+        max={max}
         value={value}
-        onChange={(e) => onChange(Math.max(0, Number(e.target.value)))}
+        onChange={(e) => {
+          const val = Math.max(0, Number(e.target.value));
+          onChange(max !== undefined ? Math.min(val, max) : val);
+        }}
         className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
       />
     </div>
@@ -88,16 +134,60 @@ function RevenueRow({
 }
 
 export default function RevenueCalculator() {
-  const [passengers, setPassengers] = useState<PassengerInputs>({
-    highPassengers: 0,
-    middlePassengers: 0,
-    lowPassengers: 0,
-  });
+  // initialized tracks whether localStorage has been read; persist/clamp
+  // effects are skipped until true to avoid overwriting stored data with
+  // default values on the first render.
+  const [initialized, setInitialized] = useState(false);
 
-  const [cargo, setCargo] = useState<CargoInputs>({
-    standardCargoTons: 0,
-    mailTons: 0,
-  });
+  const [shipSpecs, setShipSpecs] = useState<ShipSpecs>(DEFAULT_SHIP_SPECS);
+
+  const [passengers, setPassengers] = useState<PassengerInputs>(
+    DEFAULT_PASSENGERS,
+  );
+
+  const [cargo, setCargo] = useState<CargoInputs>(DEFAULT_CARGO);
+
+  // Load all state from localStorage on mount
+  useEffect(() => {
+    setShipSpecs(loadFromStorage(STORAGE_KEYS.shipSpecs, DEFAULT_SHIP_SPECS));
+    setPassengers(
+      loadFromStorage(STORAGE_KEYS.passengers, DEFAULT_PASSENGERS),
+    );
+    setCargo(loadFromStorage(STORAGE_KEYS.cargo, DEFAULT_CARGO));
+    setInitialized(true);
+  }, []);
+
+  // Persist ship specs to localStorage (skip before initial load completes)
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(STORAGE_KEYS.shipSpecs, JSON.stringify(shipSpecs));
+  }, [shipSpecs, initialized]);
+
+  // Persist passengers to localStorage (skip before initial load completes)
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(STORAGE_KEYS.passengers, JSON.stringify(passengers));
+  }, [passengers, initialized]);
+
+  // Persist cargo to localStorage (skip before initial load completes)
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(STORAGE_KEYS.cargo, JSON.stringify(cargo));
+  }, [cargo, initialized]);
+
+  // Clamp passengers and cargo when ship specs are reduced (skip on initial mount)
+  useEffect(() => {
+    if (!initialized) return;
+    setPassengers((p) => ({
+      highPassengers: Math.min(p.highPassengers, shipSpecs.highBerths),
+      middlePassengers: Math.min(p.middlePassengers, shipSpecs.middleBerths),
+      lowPassengers: Math.min(p.lowPassengers, shipSpecs.lowBerths),
+    }));
+    setCargo((c) => ({
+      standardCargoTons: Math.min(c.standardCargoTons, shipSpecs.cargoSpace),
+      mailTons: c.mailTons,
+    }));
+  }, [shipSpecs, initialized]);
 
   const passengerRevenue = {
     high: passengers.highPassengers * RATES.highPassage,
@@ -117,6 +207,55 @@ export default function RevenueCalculator() {
 
   return (
     <div className="space-y-8">
+      {/* Ship Specifications Section */}
+      <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+        <div className="bg-gray-700 px-6 py-3">
+          <h2 className="text-lg font-semibold text-white">
+            🚢 Ship Specifications
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Configure your ship&apos;s capacity. These values set the maximums
+            for passenger and cargo selection below and are saved automatically.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <InputField
+              label="Cargo Space"
+              value={shipSpecs.cargoSpace}
+              onChange={(v) =>
+                setShipSpecs((s) => ({ ...s, cargoSpace: v }))
+              }
+              hint="tons"
+            />
+            <InputField
+              label="High Berths"
+              value={shipSpecs.highBerths}
+              onChange={(v) =>
+                setShipSpecs((s) => ({ ...s, highBerths: v }))
+              }
+              hint="staterooms"
+            />
+            <InputField
+              label="Middle Berths"
+              value={shipSpecs.middleBerths}
+              onChange={(v) =>
+                setShipSpecs((s) => ({ ...s, middleBerths: v }))
+              }
+              hint="staterooms"
+            />
+            <InputField
+              label="Low Berths"
+              value={shipSpecs.lowBerths}
+              onChange={(v) =>
+                setShipSpecs((s) => ({ ...s, lowBerths: v }))
+              }
+              hint="capsules"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Passenger Section */}
       <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         <div className="bg-amber-600 px-6 py-3">
@@ -133,6 +272,7 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, highPassengers: v }))
               }
               hint={formatCredits(RATES.highPassage) + "/jump"}
+              max={shipSpecs.highBerths}
             />
             <InputField
               label="Middle Passage"
@@ -141,6 +281,7 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, middlePassengers: v }))
               }
               hint={formatCredits(RATES.middlePassage) + "/jump"}
+              max={shipSpecs.middleBerths}
             />
             <InputField
               label="Low Passage"
@@ -149,6 +290,7 @@ export default function RevenueCalculator() {
                 setPassengers((p) => ({ ...p, lowPassengers: v }))
               }
               hint={formatCredits(RATES.lowPassage) + "/jump"}
+              max={shipSpecs.lowBerths}
             />
           </div>
 
@@ -225,6 +367,7 @@ export default function RevenueCalculator() {
                 setCargo((c) => ({ ...c, standardCargoTons: v }))
               }
               hint={formatCredits(RATES.standardCargo) + "/ton"}
+              max={shipSpecs.cargoSpace}
             />
             <InputField
               label="Mail Cargo"
