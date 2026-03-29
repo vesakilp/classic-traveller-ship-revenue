@@ -17,12 +17,20 @@ interface PassengerResult {
   finalCount: number;
 }
 
+interface CargoLot {
+  id: string;
+  type: "Major" | "Minor" | "Incidental";
+  sizeDie: number;
+  tons: number;
+}
+
 interface CargoResult {
   expression: string;
   diceRolled: number[];
   baseCount: number;
   dm: number;
   finalCount: number;
+  lots: CargoLot[];
   totalTons: number;
 }
 
@@ -199,6 +207,7 @@ function rollCargoType(
       baseCount: 0,
       dm,
       finalCount: 0,
+      lots: [],
       totalTons: 0,
     };
   }
@@ -207,16 +216,23 @@ function rollCargoType(
     diceRolled.reduce((a, b) => a + b, 0) + expr.constant;
   const finalCount = Math.max(0, baseCount + dm);
   const multiplier = CARGO_MULTIPLIERS[type];
-  const totalTons = Array.from({ length: finalCount }, rollD6).reduce(
-    (sum, die) => sum + die * multiplier,
-    0,
-  );
+  const lots: CargoLot[] = Array.from({ length: finalCount }, (_, i) => {
+    const sizeDie = rollD6();
+    return {
+      id: `${type.toLowerCase()}-${i}`,
+      type,
+      sizeDie,
+      tons: sizeDie * multiplier,
+    };
+  });
+  const totalTons = lots.reduce((sum, lot) => sum + lot.tons, 0);
   return {
     expression: exprString(expr),
     diceRolled,
     baseCount,
     dm,
     finalCount,
+    lots,
     totalTons,
   };
 }
@@ -260,6 +276,42 @@ function performRoll(
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/** Small inline info tooltip shown on click. */
+function InfoTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-block align-middle">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-900 dark:hover:text-indigo-300 text-xs font-bold focus:outline-none transition-colors"
+        aria-label="More information"
+      >
+        ?
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 left-6 top-0 w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
+          role="tooltip"
+        >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute top-1.5 right-1.5 text-gray-400 hover:text-white leading-none"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+          <p className="pr-4">{text}</p>
+        </div>
+      )}
+    </span>
+  );
+}
+
 const POP_OPTIONS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A"];
 
 function WorldInputCard({
@@ -286,8 +338,9 @@ function WorldInputCard({
       </h3>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
             Population
+            <InfoTip text="The world's population digit from its Universal World Profile (UWP), 0–9 or A (billions). Higher population means more passengers and cargo are available." />
           </label>
           <select
             value={pop}
@@ -302,8 +355,9 @@ function WorldInputCard({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
             Tech Level
+            <InfoTip text="The world's Tech Level (TL) from its UWP, 0–20. The difference between origin and destination TL is used as a dice modifier: higher origin TL helps, higher destination TL hurts." />
           </label>
           <select
             value={tl}
@@ -320,8 +374,9 @@ function WorldInputCard({
       </div>
       {zone !== undefined && onZoneChange && (
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
             Travel Zone
+            <InfoTip text="Green: normal travel. Amber: caution advised — major cargo unavailable and –6 DM to passenger rolls. Red: interdicted — all cargo unavailable, Middle/Low passengers forced to 0, –12 DM to High passenger roll." />
           </label>
           <div className="flex gap-2">
             {(["Green", "Amber", "Red"] as TravelZone[]).map((z) => {
@@ -448,10 +503,30 @@ export default function PassengerCargoRoller() {
   const [destZone, setDestZone] = useState<TravelZone>("Green");
   const [result, setResult] = useState<RollResult | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [acceptedLotIds, setAcceptedLotIds] = useState<Set<string>>(new Set());
 
   function handleRoll() {
-    setResult(performRoll(originPop, originTL, destPop, destTL, destZone));
-    setShowDetail(false);
+    const newResult = performRoll(originPop, originTL, destPop, destTL, destZone);
+    setResult(newResult);
+    // Pre-accept all lots from the new roll; leave showDetail unchanged
+    const allIds = new Set<string>([
+      ...newResult.cargo.major.lots.map((l) => l.id),
+      ...newResult.cargo.minor.lots.map((l) => l.id),
+      ...newResult.cargo.incidental.lots.map((l) => l.id),
+    ]);
+    setAcceptedLotIds(allIds);
+  }
+
+  function toggleLot(id: string) {
+    setAcceptedLotIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   const totalPax = result
@@ -460,11 +535,19 @@ export default function PassengerCargoRoller() {
       result.passengers.low.finalCount
     : 0;
 
-  const totalCargoTons = result
-    ? result.cargo.major.totalTons +
-      result.cargo.minor.totalTons +
-      result.cargo.incidental.totalTons
-    : 0;
+  const allLots: CargoLot[] = result
+    ? [
+        ...result.cargo.major.lots,
+        ...result.cargo.minor.lots,
+        ...result.cargo.incidental.lots,
+      ]
+    : [];
+
+  const acceptedTons = allLots
+    .filter((l) => acceptedLotIds.has(l.id))
+    .reduce((sum, l) => sum + l.tons, 0);
+
+  const availableTons = allLots.reduce((sum, l) => sum + l.tons, 0);
 
   const paxRevenue = result
     ? result.passengers.high.finalCount * PASSENGER_RATES.high +
@@ -472,16 +555,17 @@ export default function PassengerCargoRoller() {
       result.passengers.low.finalCount * PASSENGER_RATES.low
     : 0;
 
-  const cargoRevenue = totalCargoTons * CARGO_RATE;
+  const cargoRevenue = acceptedTons * CARGO_RATE;
   const totalRevenue = paxRevenue + cargoRevenue;
 
   return (
     <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="bg-indigo-700 px-6 py-3">
+      <div className="bg-indigo-700 px-6 py-3 flex items-center gap-2">
         <h2 className="text-lg font-semibold text-white">
           🎲 Roll Available Passengers &amp; Cargo
         </h2>
+        <InfoTip text="Step 1 of 2: Roll to see what passengers and cargo are available at the origin world for this jump. Then use the revenue calculator below to record what your ship actually carries." />
       </div>
 
       <div className="p-6 space-y-6">
@@ -526,8 +610,9 @@ export default function PassengerCargoRoller() {
           <div className="space-y-5">
             {/* DM summary */}
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 flex items-center">
                 Applied Modifiers (DMs)
+                <InfoTip text="DMs (Dice Modifiers) are bonuses or penalties added to the dice rolls. Positive values mean more passengers/cargo are available; negative values mean fewer. All DMs are summed before being applied." />
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                 {[
@@ -604,8 +689,9 @@ export default function PassengerCargoRoller() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Passengers */}
               <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-4 space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center">
                   🚀 Passengers
+                  <InfoTip text="High Passage: Cr10,000 — private stateroom, full service. Middle Passage: Cr8,000 — shared stateroom. Low Passage: Cr1,000 — suspended animation (risky)." />
                 </h3>
                 <div className="space-y-1">
                   {[
@@ -649,15 +735,28 @@ export default function PassengerCargoRoller() {
 
               {/* Cargo */}
               <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-4 space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center">
                   📦 Cargo
+                  <InfoTip text="Each row shows the number of discrete shipments of that type. Major lots: each die ×10 tons. Minor: ×5 tons. Incidental: ×1 ton. All cargo is Cr1,000/ton." />
                 </h3>
                 <div className="space-y-1">
                   {[
-                    { label: "Major", cargo: result.cargo.major },
-                    { label: "Minor", cargo: result.cargo.minor },
-                    { label: "Incidental", cargo: result.cargo.incidental },
-                  ].map(({ label, cargo }) => (
+                    {
+                      label: "Major",
+                      cargo: result.cargo.major,
+                      mult: CARGO_MULTIPLIERS.Major,
+                    },
+                    {
+                      label: "Minor",
+                      cargo: result.cargo.minor,
+                      mult: CARGO_MULTIPLIERS.Minor,
+                    },
+                    {
+                      label: "Incidental",
+                      cargo: result.cargo.incidental,
+                      mult: CARGO_MULTIPLIERS.Incidental,
+                    },
+                  ].map(({ label, cargo, mult }) => (
                     <div
                       key={label}
                       className="flex justify-between text-sm"
@@ -666,21 +765,25 @@ export default function PassengerCargoRoller() {
                         {label}
                       </span>
                       <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {cargo.totalTons} t
+                        {cargo.finalCount} shipment{cargo.finalCount !== 1 ? "s" : ""}
+                        <span className="text-xs font-normal text-gray-400 ml-1">
+                          / {cargo.totalTons} t (×{mult}/die)
+                        </span>
                       </span>
                     </div>
                   ))}
                 </div>
                 <div className="border-t border-amber-200 dark:border-amber-800 pt-2 flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
-                  <span>Total ({totalCargoTons} t)</span>
-                  <span>{formatCredits(cargoRevenue)}</span>
+                  <span>Available ({availableTons} t total)</span>
+                  <span>{allLots.length} shipments</span>
                 </div>
               </div>
 
               {/* Revenue */}
               <div className="rounded-lg border-2 border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950 p-4 space-y-2 flex flex-col justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-400">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-400 flex items-center">
                   💰 Potential Revenue
+                  <InfoTip text="Revenue if all passengers are booked and all accepted cargo shipments are loaded. Uncheck cargo shipments below to exclude them from the total (e.g. if they don't fit)." />
                 </h3>
                 <div className="space-y-1">
                   <div className="flex justify-between text-sm">
@@ -693,7 +796,7 @@ export default function PassengerCargoRoller() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-400">
-                      Cargo
+                      Cargo ({acceptedTons} t accepted)
                     </span>
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
                       {formatCredits(cargoRevenue)}
@@ -706,6 +809,72 @@ export default function PassengerCargoRoller() {
                 </div>
               </div>
             </div>
+
+            {/* Cargo shipment list */}
+            {allLots.length > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="bg-gray-100 dark:bg-gray-800 px-4 py-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                    Available Cargo Shipments
+                  </span>
+                  <InfoTip text="Each shipment is a discrete lot and cannot be subdivided. Check the shipments your ship will carry (based on available cargo space); uncheck those you decline. Revenue updates automatically." />
+                  <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
+                    {acceptedLotIds.size}/{allLots.length} accepted · {acceptedTons} t
+                  </span>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {allLots.map((lot, i) => {
+                    const accepted = acceptedLotIds.has(lot.id);
+                    const typeBadge: Record<CargoLot["type"], string> = {
+                      Major:
+                        "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                      Minor:
+                        "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+                      Incidental:
+                        "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+                    };
+                    return (
+                      <label
+                        key={lot.id}
+                        className={`flex items-center justify-between px-4 py-2 text-sm cursor-pointer transition-colors ${
+                          accepted
+                            ? "bg-white dark:bg-gray-900"
+                            : "bg-gray-50 dark:bg-gray-800 opacity-50"
+                        } hover:bg-indigo-50 dark:hover:bg-indigo-950`}
+                      >
+                        <span className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={accepted}
+                            onChange={() => toggleLot(lot.id)}
+                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-gray-500 dark:text-gray-400 tabular-nums w-6 text-right">
+                            #{i + 1}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-xs font-semibold ${typeBadge[lot.type]}`}
+                          >
+                            {lot.type}
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-4">
+                          <span className="text-gray-400 dark:text-gray-500 text-xs">
+                            die {lot.sizeDie} × {CARGO_MULTIPLIERS[lot.type]}
+                          </span>
+                          <span className="font-semibold text-gray-900 dark:text-gray-100 w-16 text-right">
+                            {lot.tons} t
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-400 text-xs w-20 text-right">
+                            {formatCredits(lot.tons * CARGO_RATE)}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Detailed breakdown toggle */}
             <button
