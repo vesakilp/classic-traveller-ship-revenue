@@ -2,6 +2,21 @@
 
 import { useState } from "react";
 import { ShipSpecs } from "../types";
+import {
+  parseUWP,
+  formatUWP,
+  randomUWP,
+  uwpPopulation,
+  uwpTechLevel,
+  starportDescription,
+  sizeDescription,
+  atmosphereDescription,
+  hydrographicsDescription,
+  populationDescription,
+  governmentDescription,
+  lawLevelDescription,
+  techLevelDescription,
+} from "../utils/uwp";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -347,62 +362,143 @@ function InfoTip({ text }: { text: string }) {
   );
 }
 
-const POP_OPTIONS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A"];
+// ─── UWP world-input sub-components ──────────────────────────────────────────
 
-function WorldInputCard({
+function UWPCharRow({
+  label,
+  code,
+  description,
+}: {
+  label: string;
+  code: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-center px-3 py-1.5 gap-3 text-xs">
+      <span className="w-24 text-gray-500 dark:text-gray-400 font-medium flex-shrink-0">
+        {label}
+      </span>
+      <span className="w-5 text-center font-mono font-bold text-amber-700 dark:text-amber-400 flex-shrink-0">
+        {code}
+      </span>
+      <span className="text-gray-700 dark:text-gray-300">{description}</span>
+    </div>
+  );
+}
+
+function WorldUWPCard({
   title,
-  pop,
-  onPopChange,
-  tl,
-  onTlChange,
+  uwp,
+  onUWPChange,
   zone,
   onZoneChange,
 }: {
   title: string;
-  pop: string;
-  onPopChange: (v: string) => void;
-  tl: number;
-  onTlChange: (v: number) => void;
+  uwp: string;
+  onUWPChange: (v: string) => void;
   zone?: TravelZone;
   onZoneChange?: (v: TravelZone) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const parsed = parseUWP(uwp);
+  const isValid = parsed !== null;
+
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 space-y-3">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
         {title}
       </h3>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
-            Population
-            <InfoTip text="The world's population digit from its Universal World Profile (UWP), 0–9 or A (billions). Higher population means more passengers and cargo are available." />
-          </label>
-          <select
-            value={pop}
-            onChange={(e) => onPopChange(e.target.value)}
-            className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            {POP_OPTIONS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
-            Tech Level
-            <InfoTip text="The world's Tech Level (TL) from its UWP, 0–20. The difference between origin and destination TL is used as a dice modifier: higher origin TL helps, higher destination TL hurts." />
-          </label>
-          <select
-            value={tl}
-            onChange={(e) => onTlChange(parseInt(e.target.value, 10))}
-            className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
-          >
-            {Array.from({ length: 21 }, (_, i) => (
-              <option key={i} value={i}>{i}</option>
-            ))}
-          </select>
-        </div>
+
+      {/* UWP text input */}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
+          UWP
+          <InfoTip text="Universal World Profile — 7-character world code followed by tech level. Format: Starport Size Atmo Hydro Pop Gov Law-TL. Example: A666677-8." />
+        </label>
+        <input
+          type="text"
+          value={uwp}
+          onChange={(e) => onUWPChange(e.target.value.toUpperCase())}
+          placeholder="e.g. A666677-8"
+          maxLength={9}
+          className={`rounded-md border bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+            isValid || uwp.length === 0
+              ? "border-gray-300 dark:border-gray-600"
+              : "border-red-400 dark:border-red-600"
+          }`}
+        />
+        {!isValid && uwp.length > 0 && (
+          <p className="text-xs text-red-500 dark:text-red-400">
+            Invalid UWP — expected format like A666677-8
+          </p>
+        )}
       </div>
+
+      {/* Accordion: world characteristics */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline focus:outline-none flex items-center gap-1"
+        >
+          {open ? "▲ Hide" : "▼ Show"} world characteristics
+        </button>
+
+        {open && (
+          <div className="mt-2 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+            {parsed ? (
+              <>
+                <UWPCharRow
+                  label="Starport"
+                  code={parsed.starport}
+                  description={starportDescription(parsed.starport)}
+                />
+                <UWPCharRow
+                  label="Size"
+                  code={parsed.size}
+                  description={sizeDescription(parsed.size)}
+                />
+                <UWPCharRow
+                  label="Atmosphere"
+                  code={parsed.atmosphere}
+                  description={atmosphereDescription(parsed.atmosphere)}
+                />
+                <UWPCharRow
+                  label="Hydrographics"
+                  code={parsed.hydrographics}
+                  description={hydrographicsDescription(parsed.hydrographics)}
+                />
+                <UWPCharRow
+                  label="Population"
+                  code={parsed.population}
+                  description={populationDescription(parsed.population)}
+                />
+                <UWPCharRow
+                  label="Government"
+                  code={parsed.government}
+                  description={governmentDescription(parsed.government)}
+                />
+                <UWPCharRow
+                  label="Law Level"
+                  code={parsed.lawLevel}
+                  description={lawLevelDescription(parsed.lawLevel)}
+                />
+                <UWPCharRow
+                  label="Tech Level"
+                  code={parsed.techLevel}
+                  description={techLevelDescription(parsed.techLevel)}
+                />
+              </>
+            ) : (
+              <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
+                Enter a valid UWP to see world characteristics.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Travel Zone selector — destination only */}
       {zone !== undefined && onZoneChange && (
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center">
@@ -412,8 +508,10 @@ function WorldInputCard({
           <div className="flex gap-2">
             {(["Green", "Amber", "Red"] as TravelZone[]).map((z) => {
               const colours: Record<TravelZone, string> = {
-                Green: "border-green-400 bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-300 dark:border-green-700",
-                Amber: "border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700",
+                Green:
+                  "border-green-400 bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-300 dark:border-green-700",
+                Amber:
+                  "border-amber-400 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700",
                 Red: "border-red-400 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-300 dark:border-red-700",
               };
               const selected = zone === z;
@@ -503,11 +601,18 @@ export default function PassengerCargoRoller({
 }: {
   shipSpecs: ShipSpecs;
 }) {
-  const [originPop, setOriginPop] = useState("6");
-  const [originTL, setOriginTL] = useState(8);
-  const [destPop, setDestPop] = useState("5");
-  const [destTL, setDestTL] = useState(7);
+  const [originUWP, setOriginUWP] = useState("A666677-8");
+  const [destUWP, setDestUWP] = useState("B555566-7");
   const [destZone, setDestZone] = useState<TravelZone>("Green");
+
+  // Derived values parsed from UWP strings — used in roll calculations
+  const originParsed = parseUWP(originUWP);
+  const destParsed = parseUWP(destUWP);
+  const originPop = originParsed ? uwpPopulation(originParsed) : "6";
+  const originTL = originParsed ? uwpTechLevel(originParsed) : 8;
+  const destPop = destParsed ? uwpPopulation(destParsed) : "5";
+  const destTL = destParsed ? uwpTechLevel(destParsed) : 7;
+  const canRoll = originParsed !== null && destParsed !== null;
   const [result, setResult] = useState<RollResult | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [acceptedPassengers, setAcceptedPassengers] = useState<AcceptedPassengers>(DEFAULT_ACCEPTED_PASSENGERS);
@@ -526,6 +631,11 @@ export default function PassengerCargoRoller({
     ];
     setAcceptedLotIds(autoSelectLots(allNewLots, shipSpecs.cargoSpace));
     // Leave showDetail unchanged
+  }
+
+  function handleRandomize() {
+    setOriginUWP(formatUWP(randomUWP()));
+    setDestUWP(formatUWP(randomUWP()));
   }
 
   const allLots: CargoLot[] = result
@@ -646,32 +756,38 @@ export default function PassengerCargoRoller({
 
         {/* World input form */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <WorldInputCard
+          <WorldUWPCard
             title="🌍 Origin World"
-            pop={originPop}
-            onPopChange={setOriginPop}
-            tl={originTL}
-            onTlChange={setOriginTL}
+            uwp={originUWP}
+            onUWPChange={setOriginUWP}
           />
-          <WorldInputCard
+          <WorldUWPCard
             title="🌏 Destination World"
-            pop={destPop}
-            onPopChange={setDestPop}
-            tl={destTL}
-            onTlChange={setDestTL}
+            uwp={destUWP}
+            onUWPChange={setDestUWP}
             zone={destZone}
             onZoneChange={setDestZone}
           />
         </div>
 
-        {/* Roll button */}
-        <button
-          type="button"
-          onClick={handleRoll}
-          className="w-full sm:w-auto px-8 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-base transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-          🎲 Roll Passengers &amp; Cargo
-        </button>
+        {/* Randomize + Roll buttons */}
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleRandomize}
+            className="px-5 py-3 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            🎲 Randomize Worlds
+          </button>
+          <button
+            type="button"
+            onClick={handleRoll}
+            disabled={!canRoll}
+            className="px-8 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-base transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          >
+            🎲 Roll Passengers &amp; Cargo
+          </button>
+        </div>
 
         {/* Results */}
         {result && (
