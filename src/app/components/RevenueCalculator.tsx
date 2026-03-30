@@ -275,7 +275,7 @@ export default function RevenueCalculator({
       <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
         <div className="bg-amber-600 px-6 py-3 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-white">
-            🚀 Passenger Revenue
+            🧳 Passenger Revenue
           </h2>
           <InfoTip text="High and Middle passengers each occupy one stateroom (configured in Ship Specs above). Low passengers use low berth capsules (suspended animation, Cr1,000/jump)." />
         </div>

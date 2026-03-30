@@ -790,7 +790,7 @@ export default function PassengerCargoRoller({
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 overflow-hidden">
               <div className="bg-amber-50 dark:bg-amber-950 px-4 py-3 flex items-center gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex items-center">
-                  🚀 Passenger Revenue
+                  🧳 Passenger Revenue
                   <InfoTip text="Passengers auto-allocated for best revenue: High (Cr10,000) fills staterooms first, then Middle (Cr8,000) takes remaining staterooms, Low (Cr1,000) fills low berths. Adjust counts manually if needed. Capacity from Ship Specs above." />
                 </h3>
               </div>

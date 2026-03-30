@@ -90,7 +90,7 @@ export default function ShipSpecsPanel({
     <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
       <div className="bg-gray-700 px-6 py-3">
         <h2 className="text-lg font-semibold text-white">
-          🚢 Ship Specifications
+          🚀 Ship Specifications
         </h2>
       </div>
       <div className="p-6 space-y-4">
