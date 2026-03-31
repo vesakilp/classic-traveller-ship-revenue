@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ShipSpecs } from "../types";
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
@@ -9,6 +9,13 @@ function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const [tipStyle, setTipStyle] = useState<React.CSSProperties>({});
   const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, { capture: true, passive: true });
+    return () => window.removeEventListener("scroll", close, { capture: true });
+  }, [open]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -40,21 +47,29 @@ function InfoTip({ text }: { text: string }) {
         ?
       </button>
       {open && (
-        <div
-          style={tipStyle}
-          className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
-          role="tooltip"
-        >
-          <button
-            type="button"
+        <>
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: 49 }} /* sits below tooltip (z:50 in tipStyle) */
             onClick={() => setOpen(false)}
-            className="absolute top-1.5 right-1.5 text-gray-400 hover:text-white leading-none"
-            aria-label="Close"
+            aria-hidden="true"
+          />
+          <div
+            style={tipStyle}
+            className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
+            role="tooltip"
           >
-            ✕
-          </button>
-          <p className="pr-4">{text}</p>
-        </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <p className="pr-6">{text}</p>
+          </div>
+        </>
       )}
     </span>
   );
