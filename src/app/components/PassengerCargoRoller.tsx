@@ -17,6 +17,7 @@ import {
   lawLevelDescription,
   techLevelDescription,
 } from "../utils/uwp";
+import { deriveTradeTagsFromUWP, tradeTagList } from "../utils/tradeTags";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -488,6 +489,40 @@ function WorldUWPCard({
                   code={parsed.techLevel}
                   description={techLevelDescription(parsed.techLevel)}
                 />
+                {/* Trade tags derived from UWP */}
+                <div className="flex items-center px-3 py-1.5 gap-3 text-xs">
+                  <span className="w-24 text-gray-500 dark:text-gray-400 font-medium flex-shrink-0">
+                    Trade Tags
+                  </span>
+                  <span className="flex flex-wrap gap-1">
+                    {(() => {
+                      const tags = deriveTradeTagsFromUWP(parsed);
+                      const list = tradeTagList(tags);
+                      if (list.length === 0)
+                        return (
+                          <span className="text-gray-400 dark:text-gray-500 italic">
+                            none
+                          </span>
+                        );
+                      const tagColors: Record<string, string> = {
+                        Ag: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+                        Na: "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300",
+                        In: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+                        Ni: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+                        Ri: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+                        Po: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+                      };
+                      return list.map((t) => (
+                        <span
+                          key={t}
+                          className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${tagColors[t] ?? "bg-gray-100 text-gray-600"}`}
+                        >
+                          {t}
+                        </span>
+                      ));
+                    })()}
+                  </span>
+                </div>
               </>
             ) : (
               <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
@@ -598,13 +633,21 @@ const DEFAULT_ACCEPTED_PASSENGERS: AcceptedPassengers = { high: 0, middle: 0, lo
 
 export default function PassengerCargoRoller({
   shipSpecs,
+  originUWP,
+  onOriginUWPChange,
+  destUWP,
+  onDestUWPChange,
+  destZone,
+  onDestZoneChange,
 }: {
   shipSpecs: ShipSpecs;
+  originUWP: string;
+  onOriginUWPChange: (v: string) => void;
+  destUWP: string;
+  onDestUWPChange: (v: string) => void;
+  destZone: TravelZone;
+  onDestZoneChange: (v: TravelZone) => void;
 }) {
-  const [originUWP, setOriginUWP] = useState("A666677-8");
-  const [destUWP, setDestUWP] = useState("B555566-7");
-  const [destZone, setDestZone] = useState<TravelZone>("Green");
-
   // Derived values parsed from UWP strings — used in roll calculations
   const originParsed = parseUWP(originUWP);
   const destParsed = parseUWP(destUWP);
@@ -634,8 +677,8 @@ export default function PassengerCargoRoller({
   }
 
   function handleRandomize() {
-    setOriginUWP(formatUWP(randomUWP()));
-    setDestUWP(formatUWP(randomUWP()));
+    onOriginUWPChange(formatUWP(randomUWP()));
+    onDestUWPChange(formatUWP(randomUWP()));
   }
 
   const allLots: CargoLot[] = result
@@ -759,14 +802,14 @@ export default function PassengerCargoRoller({
           <WorldUWPCard
             title="🌍 Origin World"
             uwp={originUWP}
-            onUWPChange={setOriginUWP}
+            onUWPChange={onOriginUWPChange}
           />
           <WorldUWPCard
             title="🌏 Destination World"
             uwp={destUWP}
-            onUWPChange={setDestUWP}
+            onUWPChange={onDestUWPChange}
             zone={destZone}
-            onZoneChange={setDestZone}
+            onZoneChange={onDestZoneChange}
           />
         </div>
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import ShipSpecsPanel from "./components/ShipSpecsPanel";
 import PassengerCargoRoller from "./components/PassengerCargoRoller";
+import SpeculativeCargoPanel from "./components/SpeculativeCargoPanel";
 import {
   ShipSpecs,
   DEFAULT_SHIP_SPECS,
@@ -12,6 +13,12 @@ import {
 export default function Home() {
   const [shipSpecs, setShipSpecs] = useState<ShipSpecs>(DEFAULT_SHIP_SPECS);
   const [initialized, setInitialized] = useState(false);
+
+  // Shared world UWP state — used by both the passenger/cargo roller and
+  // the speculative cargo panel so trade tags are derived consistently.
+  const [originUWP, setOriginUWP] = useState("A666677-8");
+  const [destUWP, setDestUWP]     = useState("B555566-7");
+  const [destZone, setDestZone]   = useState<"Green" | "Amber" | "Red">("Green");
 
   // Load ship specs from localStorage on mount
   useEffect(() => {
@@ -50,7 +57,22 @@ export default function Home() {
         <ShipSpecsPanel value={shipSpecs} onChange={setShipSpecs} />
 
         {/* 2. Roll available passengers & cargo */}
-        <PassengerCargoRoller shipSpecs={shipSpecs} />
+        <PassengerCargoRoller
+          shipSpecs={shipSpecs}
+          originUWP={originUWP}
+          onOriginUWPChange={setOriginUWP}
+          destUWP={destUWP}
+          onDestUWPChange={setDestUWP}
+          destZone={destZone}
+          onDestZoneChange={setDestZone}
+        />
+
+        {/* 3. Speculative cargo (Classic Traveller trade & speculation) */}
+        <SpeculativeCargoPanel
+          shipSpecs={shipSpecs}
+          originUWP={originUWP}
+          destUWP={destUWP}
+        />
       </div>
     </main>
   );
