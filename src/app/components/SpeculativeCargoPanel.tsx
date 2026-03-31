@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShipSpecs } from "../types";
 import { parseUWP } from "../utils/uwp";
 import { deriveTradeTagsFromUWP, tradeTagList, TradeTags } from "../utils/tradeTags";
@@ -223,10 +223,12 @@ export default function SpeculativeCargoPanel({
   shipSpecs,
   originUWP,
   destUWP,
+  acceptedStandardCargoTons,
 }: {
   shipSpecs: ShipSpecs;
   originUWP: string;
   destUWP: string;
+  acceptedStandardCargoTons?: number;
 }) {
   // ── Derived trade tags ─────────────────────────────────────────────────────
   const originParsed = parseUWP(originUWP);
@@ -235,13 +237,23 @@ export default function SpeculativeCargoPanel({
   const destTags     = destParsed   ? deriveTradeTagsFromUWP(destParsed)   : null;
 
   // ── Inputs ─────────────────────────────────────────────────────────────────
-  const [capital, setCapital]     = useState(0);
-  const [freeCargo, setFreeCargo] = useState(shipSpecs.cargoSpace);
+  const [capital, setCapital]     = useState(shipSpecs.capital ?? 0);
+  const [freeCargo, setFreeCargo] = useState(Math.max(0, shipSpecs.cargoSpace - (acceptedStandardCargoTons ?? 0)));
   const [brokerDM, setBrokerDM]   = useState(0);
   const [skillDM, setSkillDM]     = useState(0);
   const [numLots, setNumLots]     = useState(1);
   const [seed, setSeed]           = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Sync capital from ship specs whenever it changes
+  useEffect(() => {
+    setCapital(shipSpecs.capital ?? 0);
+  }, [shipSpecs.capital]);
+
+  // Sync free cargo space whenever ship cargo space or accepted standard cargo changes
+  useEffect(() => {
+    setFreeCargo(Math.max(0, shipSpecs.cargoSpace - (acceptedStandardCargoTons ?? 0)));
+  }, [shipSpecs.cargoSpace, acceptedStandardCargoTons]);
 
   // ── Rolling state ──────────────────────────────────────────────────────────
   const [rolledLots, setRolledLots] = useState<RolledLot[]>([]);
@@ -368,7 +380,7 @@ export default function SpeculativeCargoPanel({
       {/* Header */}
       <div className="bg-emerald-700 px-6 py-3 flex items-center gap-2">
         <h2 className="text-lg font-semibold text-white">
-          💰 Speculative Cargo (Classic)
+          💰 Speculative Cargo
         </h2>
         <InfoTip text="Roll for speculative trade lots at the origin world. Select which lots to purchase, then compute resale profit at the destination. Rules are data-driven — edit src/app/data/tradeGoods.ts and src/app/data/actualValueTable.ts to customise." />
       </div>
@@ -398,18 +410,18 @@ export default function SpeculativeCargoPanel({
         {/* Inputs */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <NumInput
-            label="Capital"
+            label="Ship's Credits"
             value={capital}
             onChange={setCapital}
             hint="credits"
             infoText="Available credits for purchases. Enter 0 to skip the capital constraint."
           />
           <NumInput
-            label="Free Cargo"
+            label="Free Cargo Space"
             value={freeCargo}
             onChange={setFreeCargo}
             hint="tons"
-            infoText="Available cargo space for speculative goods. Defaults to ship cargo space; reduce if other cargo is already allocated."
+            infoText="Available cargo space for speculative goods. Defaults to ship cargo space minus accepted standard cargo lots; reduce further if other cargo is already allocated."
           />
           <NumInput
             label="Broker DM"

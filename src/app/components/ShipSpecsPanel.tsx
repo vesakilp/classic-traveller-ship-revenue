@@ -122,6 +122,15 @@ export default function ShipSpecsPanel({
             infoText="Number of low berth capsules for Low passage (Cr1,000/jump). Each Low passenger uses one capsule (suspended animation, small revival risk)."
           />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <NumberField
+            label="Ship's Credits"
+            value={value.capital}
+            onChange={(v) => onChange({ ...value, capital: v })}
+            hint="credits"
+            infoText="Current operating capital available to the ship. Shared with Speculative Cargo as the purchase budget."
+          />
+        </div>
       </div>
     </section>
   );

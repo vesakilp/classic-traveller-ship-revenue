@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ShipSpecs } from "../types";
 import {
   parseUWP,
@@ -639,6 +639,7 @@ export default function PassengerCargoRoller({
   onDestUWPChange,
   destZone,
   onDestZoneChange,
+  onAcceptedTonsChange,
 }: {
   shipSpecs: ShipSpecs;
   originUWP: string;
@@ -647,6 +648,7 @@ export default function PassengerCargoRoller({
   onDestUWPChange: (v: string) => void;
   destZone: TravelZone;
   onDestZoneChange: (v: TravelZone) => void;
+  onAcceptedTonsChange?: (tons: number) => void;
 }) {
   // Derived values parsed from UWP strings — used in roll calculations
   const originParsed = parseUWP(originUWP);
@@ -762,6 +764,14 @@ export default function PassengerCargoRoller({
   const acceptedTons = allLots
     .filter((l) => acceptedLotIds.has(l.id))
     .reduce((sum, l) => sum + l.tons, 0);
+
+  // Keep a ref to the latest callback so the effect only re-runs when
+  // acceptedTons changes, not when the parent re-renders.
+  const onAcceptedTonsChangeRef = useRef(onAcceptedTonsChange);
+  useEffect(() => { onAcceptedTonsChangeRef.current = onAcceptedTonsChange; });
+  useEffect(() => {
+    onAcceptedTonsChangeRef.current?.(acceptedTons);
+  }, [acceptedTons]);
 
   const availableTons = allLots.reduce((sum, l) => sum + l.tons, 0);
 
