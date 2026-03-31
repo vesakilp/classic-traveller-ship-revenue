@@ -1,20 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ShipSpecs } from "../types";
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
 
 function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const [tipStyle, setTipStyle] = useState<React.CSSProperties>({});
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const TIP_W = 256; // w-64
+      const GAP = 6;
+      let left = rect.right + GAP;
+      if (left + TIP_W > window.innerWidth - 8) {
+        left = rect.left - TIP_W - GAP;
+      }
+      if (left < 8) left = 8;
+      const top = Math.max(8, Math.min(rect.top, window.innerHeight - 80));
+      const maxHeight = window.innerHeight - top - 12;
+      setTipStyle({ position: "fixed", top, left, maxHeight, overflowY: "auto", zIndex: 50 });
+    }
+    setOpen((v) => !v);
+  };
+
   return (
     <span className="relative inline-block align-middle">
       <button
+        ref={btnRef}
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
+        onClick={handleToggle}
         className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900 dark:hover:text-amber-300 text-xs font-bold focus:outline-none transition-colors"
         aria-label="More information"
       >
@@ -22,7 +41,8 @@ function InfoTip({ text }: { text: string }) {
       </button>
       {open && (
         <div
-          className="absolute z-20 left-6 top-0 w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
+          style={tipStyle}
+          className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
           role="tooltip"
         >
           <button
