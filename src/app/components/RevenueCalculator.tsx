@@ -54,16 +54,26 @@ function formatCredits(amount: number): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+let _tipId = 0;
+
 function InfoTip({ text }: { text: string }) {
+  const [id] = useState(() => ++_tipId);
   const [open, setOpen] = useState(false);
   const [tipStyle, setTipStyle] = useState<React.CSSProperties>({});
   const btnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    window.addEventListener("scroll", close, { capture: true, passive: true });
-    return () => window.removeEventListener("scroll", close, { capture: true });
+    const closeOnScroll = () => setOpen(false);
+    const closeOnOther = (e: Event) => {
+      if ((e as CustomEvent).detail !== id) setOpen(false);
+    };
+    window.addEventListener("scroll", closeOnScroll, { capture: true, passive: true });
+    window.addEventListener("infotip-open", closeOnOther);
+    return () => {
+      window.removeEventListener("scroll", closeOnScroll, { capture: true });
+      window.removeEventListener("infotip-open", closeOnOther);
+    };
   }, [open]);
 
   const handleToggle = (e: React.MouseEvent) => {
@@ -80,6 +90,7 @@ function InfoTip({ text }: { text: string }) {
       const top = Math.max(8, Math.min(rect.top, window.innerHeight - 80));
       const maxHeight = window.innerHeight - top - 12;
       setTipStyle({ position: "fixed", top, left, maxHeight, overflowY: "auto", zIndex: 50 });
+      window.dispatchEvent(new CustomEvent("infotip-open", { detail: id }));
     }
     setOpen((v) => !v);
   };
@@ -105,18 +116,19 @@ function InfoTip({ text }: { text: string }) {
           />
           <div
             style={tipStyle}
-            className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl"
+            className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl border border-gray-600"
             role="tooltip"
+            onClick={() => setOpen(false)}
           >
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="absolute top-0 right-0 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white"
+              className="absolute top-0 right-0 w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white"
               aria-label="Close"
             >
               ✕
             </button>
-            <p className="pr-6">{text}</p>
+            <p className="pr-8">{text}</p>
           </div>
         </>
       )}
