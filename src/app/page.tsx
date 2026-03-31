@@ -19,6 +19,7 @@ export default function Home() {
   const [originUWP, setOriginUWP] = useState("A666677-8");
   const [destUWP, setDestUWP]     = useState("B555566-7");
   const [destZone, setDestZone]   = useState<"Green" | "Amber" | "Red">("Green");
+  const [acceptedStandardCargoTons, setAcceptedStandardCargoTons] = useState(0);
 
   // Load ship specs from localStorage on mount
   useEffect(() => {
@@ -65,6 +66,7 @@ export default function Home() {
           onDestUWPChange={setDestUWP}
           destZone={destZone}
           onDestZoneChange={setDestZone}
+          onAcceptedTonsChange={setAcceptedStandardCargoTons}
         />
 
         {/* 3. Speculative cargo (Classic Traveller trade & speculation) */}
@@ -72,6 +74,7 @@ export default function Home() {
           shipSpecs={shipSpecs}
           originUWP={originUWP}
           destUWP={destUWP}
+          acceptedStandardCargoTons={acceptedStandardCargoTons}
         />
       </div>
     </main>
