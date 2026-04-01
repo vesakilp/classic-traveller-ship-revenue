@@ -89,20 +89,31 @@ function InfoTip({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   const [tipStyle, setTipStyle] = useState<React.CSSProperties>({});
   const btnRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const closeOnScroll = () => setOpen(false);
+    const close = () => setOpen(false);
     const closeOnOther = (e: Event) => {
       if ((e as CustomEvent).detail !== id) setOpen(false);
     };
-    window.addEventListener("scroll", closeOnScroll, { capture: true, passive: true });
-    window.addEventListener("infotip-open", closeOnOther);
-    return () => {
-      window.removeEventListener("scroll", closeOnScroll, { capture: true });
-      window.removeEventListener("infotip-open", closeOnOther);
+    const closeOnOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (!popupRef.current?.contains(target) && !btnRef.current?.contains(target)) {
+        setOpen(false);
+      }
     };
-  }, [open]);
+    window.addEventListener("scroll", close, { capture: true, passive: true });
+    window.addEventListener("infotip-open", closeOnOther);
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("touchstart", closeOnOutside, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", close, { capture: true });
+      window.removeEventListener("infotip-open", closeOnOther);
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("touchstart", closeOnOutside);
+    };
+  }, [open, id]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -135,30 +146,23 @@ function InfoTip({ text }: { text: string }) {
         ?
       </button>
       {open && (
-        <>
-          <div
-            className="fixed inset-0"
-            style={{ zIndex: 49 }} /* sits below tooltip (z:50 in tipStyle) */
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
-          <div
-            style={tipStyle}
-            className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl border border-gray-600"
-            role="tooltip"
-            onClick={() => setOpen(false)}
+        <div
+          ref={popupRef}
+          style={tipStyle}
+          className="w-64 rounded-lg bg-gray-900 text-white text-xs p-3 shadow-xl border border-gray-600"
+          role="tooltip"
+          onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+            className="absolute top-0 right-0 w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white"
+            aria-label="Close"
           >
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="absolute top-0 right-0 w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-            <p className="pr-8">{text}</p>
-          </div>
-        </>
+            ✕
+          </button>
+          <p className="pr-8">{text}</p>
+        </div>
       )}
     </span>
   );
