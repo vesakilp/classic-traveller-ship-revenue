@@ -691,6 +691,7 @@ export default function PassengerCargoRoller({
   destZone,
   onDestZoneChange,
   onAcceptedTonsChange,
+  generateTick,
 }: {
   shipSpecs: ShipSpecs;
   originUWP: string;
@@ -700,6 +701,8 @@ export default function PassengerCargoRoller({
   destZone: TravelZone;
   onDestZoneChange: (v: TravelZone) => void;
   onAcceptedTonsChange?: (tons: number) => void;
+  /** Increment this counter from the parent to trigger a new roll. */
+  generateTick?: number;
 }) {
   // Derived values parsed from UWP strings — used in roll calculations
   const originParsed = parseUWP(originUWP);
@@ -728,6 +731,21 @@ export default function PassengerCargoRoller({
     setAcceptedLotIds(autoSelectLots(allNewLots, shipSpecs.cargoSpace));
     // Leave showDetail unchanged
   }
+
+  // Trigger a roll whenever generateTick increments (skip initial mount value)
+  const prevGenerateTick = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (generateTick === undefined) return;
+    if (prevGenerateTick.current === undefined) {
+      prevGenerateTick.current = generateTick;
+      return;
+    }
+    if (generateTick !== prevGenerateTick.current) {
+      prevGenerateTick.current = generateTick;
+      if (canRoll) handleRoll();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generateTick]);
 
   function handleRandomize() {
     onOriginUWPChange(formatUWP(randomUWP()));

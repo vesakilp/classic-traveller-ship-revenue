@@ -278,11 +278,14 @@ export default function SpeculativeCargoPanel({
   originUWP,
   destUWP,
   acceptedStandardCargoTons,
+  generateTick,
 }: {
   shipSpecs: ShipSpecs;
   originUWP: string;
   destUWP: string;
   acceptedStandardCargoTons?: number;
+  /** Increment this counter from the parent to trigger a new lots roll. */
+  generateTick?: number;
 }) {
   // ── Derived trade tags ─────────────────────────────────────────────────────
   const originParsed = parseUWP(originUWP);
@@ -427,6 +430,21 @@ export default function SpeculativeCargoPanel({
 
   const canRoll       = originTags !== null;
   const canResale     = phase === "rolled" && destTags !== null && selectedLots.length > 0;
+
+  // Trigger a roll of available lots whenever generateTick increments (skip initial mount value)
+  const prevGenerateTick = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (generateTick === undefined) return;
+    if (prevGenerateTick.current === undefined) {
+      prevGenerateTick.current = generateTick;
+      return;
+    }
+    if (generateTick !== prevGenerateTick.current) {
+      prevGenerateTick.current = generateTick;
+      if (canRoll) handleRollLots();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generateTick]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

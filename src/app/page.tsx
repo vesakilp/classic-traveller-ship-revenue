@@ -4,39 +4,103 @@ import { useState, useEffect } from "react";
 import ShipSpecsPanel from "./components/ShipSpecsPanel";
 import PassengerCargoRoller from "./components/PassengerCargoRoller";
 import SpeculativeCargoPanel from "./components/SpeculativeCargoPanel";
+import PartyMembersPanel from "./components/PartyMembersPanel";
 import {
   ShipSpecs,
   DEFAULT_SHIP_SPECS,
   SHIP_SPECS_STORAGE_KEY,
+  Journey,
+  DEFAULT_JOURNEY,
+  JOURNEY_STORAGE_KEY,
+  TravelZone,
 } from "./types";
 
 export default function Home() {
   const [shipSpecs, setShipSpecs] = useState<ShipSpecs>(DEFAULT_SHIP_SPECS);
   const [initialized, setInitialized] = useState(false);
 
-  // Shared world UWP state — used by both the passenger/cargo roller and
-  // the speculative cargo panel so trade tags are derived consistently.
-  const [originUWP, setOriginUWP] = useState("A666677-8");
-  const [destUWP, setDestUWP]     = useState("B555566-7");
-  const [destZone, setDestZone]   = useState<"Green" | "Amber" | "Red">("Green");
+  // Journey state — origin/dest UWP and travel zone, stored in localStorage
+  const [journey, setJourney] = useState<Journey>(DEFAULT_JOURNEY);
+
+  // acceptedStandardCargoTons is passed from roller → speculative cargo panel
   const [acceptedStandardCargoTons, setAcceptedStandardCargoTons] = useState(0);
 
-  // Load ship specs from localStorage on mount
+  // generateTick: increment to trigger "generate all" across roller + spec cargo
+  const [generateTick, setGenerateTick] = useState(0);
+
+  // ── Bootstrap from localStorage ────────────────────────────────────────────
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(SHIP_SPECS_STORAGE_KEY);
-      if (stored) setShipSpecs(JSON.parse(stored) as ShipSpecs);
-    } catch {
-      // ignore parse errors
-    }
+      const storedSpecs = localStorage.getItem(SHIP_SPECS_STORAGE_KEY);
+      if (storedSpecs) setShipSpecs(JSON.parse(storedSpecs) as ShipSpecs);
+    } catch { /* ignore */ }
+
+    try {
+      const storedJourney = localStorage.getItem(JOURNEY_STORAGE_KEY);
+      if (storedJourney) setJourney(JSON.parse(storedJourney) as Journey);
+    } catch { /* ignore */ }
+
     setInitialized(true);
   }, []);
 
-  // Persist ship specs whenever they change (skip before first load)
+  // ── Persist to localStorage ────────────────────────────────────────────────
   useEffect(() => {
     if (!initialized) return;
     localStorage.setItem(SHIP_SPECS_STORAGE_KEY, JSON.stringify(shipSpecs));
   }, [shipSpecs, initialized]);
+
+  useEffect(() => {
+    if (!initialized) return;
+    localStorage.setItem(JOURNEY_STORAGE_KEY, JSON.stringify(journey));
+  }, [journey, initialized]);
+
+  // ── Convenience accessors for the first (and only current) stage ───────────
+  const stage = journey.stages[0];
+
+  function setOriginUWP(v: string) {
+    setJourney((j) => ({
+      ...j,
+      stages: j.stages.map((s, i) => (i === 0 ? { ...s, originUWP: v } : s)),
+    }));
+  }
+  function setDestUWP(v: string) {
+    setJourney((j) => ({
+      ...j,
+      stages: j.stages.map((s, i) => (i === 0 ? { ...s, destUWP: v } : s)),
+    }));
+  }
+  function setDestZone(v: TravelZone) {
+    setJourney((j) => ({
+      ...j,
+      stages: j.stages.map((s, i) => (i === 0 ? { ...s, destZone: v } : s)),
+    }));
+  }
+
+  // ── Journey actions ────────────────────────────────────────────────────────
+
+  function handleGenerateJourney() {
+    setGenerateTick((t) => t + 1);
+  }
+
+  function handleReturnJourney() {
+    setJourney((j) => ({
+      ...j,
+      stages: j.stages.map((s) => ({
+        ...s,
+        originUWP: s.destUWP,
+        destUWP: s.originUWP,
+        // Keep the travel zone — destination zone is determined by the destination world
+      })),
+    }));
+  }
+
+  function handleNewJourney() {
+    if (!window.confirm("Are you sure you want to start a new journey? This will wipe the current stage.")) {
+      return;
+    }
+    setJourney(DEFAULT_JOURNEY);
+    setAcceptedStandardCargoTons(0);
+  }
 
   return (
     <main className="min-h-screen bg-gray-100 dark:bg-gray-950 py-10 px-4">
@@ -50,31 +114,67 @@ export default function Home() {
             Ship Revenue Calculator
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Configure your ship, then roll for available passengers and cargo.
+            Configure your ship and party, then generate the journey.
           </p>
         </header>
 
-        {/* 1. Ship specs — shared by roller */}
+        {/* 1. Ship specs */}
         <ShipSpecsPanel value={shipSpecs} onChange={setShipSpecs} />
 
-        {/* 2. Roll available passengers & cargo */}
+        {/* 2. Party members */}
+        <PartyMembersPanel />
+
+        {/* 3. Journey controls */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+          <div className="bg-violet-700 px-6 py-3">
+            <h2 className="text-lg font-semibold text-white">🗺️ Journey Controls</h2>
+          </div>
+          <div className="p-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleGenerateJourney}
+              className="px-6 py-3 rounded-lg bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2"
+            >
+              🎲 Generate Journey
+            </button>
+            <button
+              type="button"
+              onClick={handleReturnJourney}
+              className="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2"
+              title="Swap origin and destination to plan the return trip"
+            >
+              🔄 Return Journey
+            </button>
+            <button
+              type="button"
+              onClick={handleNewJourney}
+              className="px-6 py-3 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 hover:bg-red-100 dark:hover:bg-red-900 text-red-700 dark:text-red-300 font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              🗑️ New Journey
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Roll available passengers & cargo */}
         <PassengerCargoRoller
           shipSpecs={shipSpecs}
-          originUWP={originUWP}
+          originUWP={stage.originUWP}
           onOriginUWPChange={setOriginUWP}
-          destUWP={destUWP}
+          destUWP={stage.destUWP}
           onDestUWPChange={setDestUWP}
-          destZone={destZone}
+          destZone={stage.destZone}
           onDestZoneChange={setDestZone}
           onAcceptedTonsChange={setAcceptedStandardCargoTons}
+          generateTick={generateTick}
         />
 
-        {/* 3. Speculative cargo (Classic Traveller trade & speculation) */}
+        {/* 5. Speculative cargo */}
         <SpeculativeCargoPanel
           shipSpecs={shipSpecs}
-          originUWP={originUWP}
-          destUWP={destUWP}
+          originUWP={stage.originUWP}
+          destUWP={stage.destUWP}
           acceptedStandardCargoTons={acceptedStandardCargoTons}
+          generateTick={generateTick}
         />
       </div>
     </main>
