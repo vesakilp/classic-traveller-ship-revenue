@@ -732,8 +732,15 @@ export default function PassengerCargoRoller({
     // Leave showDetail unchanged
   }
 
-  // Trigger a roll whenever generateTick increments (skip initial mount value)
+  // Trigger a roll whenever generateTick increments (skip initial mount value).
+  // Use refs to hold the latest canRoll / handleRoll so the effect only
+  // re-runs when generateTick changes (avoids stale-closure issues without
+  // needing to list unstable function references as deps).
   const prevGenerateTick = useRef<number | undefined>(undefined);
+  const canRollRef = useRef(canRoll);
+  const handleRollRef = useRef(handleRoll);
+  useEffect(() => { canRollRef.current = canRoll; });
+  useEffect(() => { handleRollRef.current = handleRoll; });
   useEffect(() => {
     if (generateTick === undefined) return;
     if (prevGenerateTick.current === undefined) {
@@ -742,9 +749,8 @@ export default function PassengerCargoRoller({
     }
     if (generateTick !== prevGenerateTick.current) {
       prevGenerateTick.current = generateTick;
-      if (canRoll) handleRoll();
+      if (canRollRef.current) handleRollRef.current();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generateTick]);
 
   function handleRandomize() {

@@ -431,8 +431,15 @@ export default function SpeculativeCargoPanel({
   const canRoll       = originTags !== null;
   const canResale     = phase === "rolled" && destTags !== null && selectedLots.length > 0;
 
-  // Trigger a roll of available lots whenever generateTick increments (skip initial mount value)
+  // Trigger a roll of available lots whenever generateTick increments (skip initial mount value).
+  // Use refs to hold the latest canRoll / handleRollLots so the effect only
+  // re-runs when generateTick changes (avoids stale-closure issues without
+  // needing to list unstable function references as deps).
   const prevGenerateTick = useRef<number | undefined>(undefined);
+  const canRollRef = useRef(canRoll);
+  const handleRollLotsRef = useRef(handleRollLots);
+  useEffect(() => { canRollRef.current = canRoll; });
+  useEffect(() => { handleRollLotsRef.current = handleRollLots; });
   useEffect(() => {
     if (generateTick === undefined) return;
     if (prevGenerateTick.current === undefined) {
@@ -441,9 +448,8 @@ export default function SpeculativeCargoPanel({
     }
     if (generateTick !== prevGenerateTick.current) {
       prevGenerateTick.current = generateTick;
-      if (canRoll) handleRollLots();
+      if (canRollRef.current) handleRollLotsRef.current();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generateTick]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
