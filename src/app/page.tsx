@@ -89,7 +89,9 @@ export default function Home() {
         ...s,
         originUWP: s.destUWP,
         destUWP: s.originUWP,
-        // Keep the travel zone — destination zone is determined by the destination world
+        // Reset zone to Green: the new destination is the original origin, whose
+        // zone was not separately tracked. The user can adjust it if needed.
+        destZone: "Green" as const,
       })),
     }));
   }

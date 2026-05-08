@@ -438,8 +438,10 @@ export default function SpeculativeCargoPanel({
   const prevGenerateTick = useRef<number | undefined>(undefined);
   const canRollRef = useRef(canRoll);
   const handleRollLotsRef = useRef(handleRollLots);
-  useEffect(() => { canRollRef.current = canRoll; });
-  useEffect(() => { handleRollLotsRef.current = handleRollLots; });
+  useEffect(() => {
+    canRollRef.current = canRoll;
+    handleRollLotsRef.current = handleRollLots;
+  });
   useEffect(() => {
     if (generateTick === undefined) return;
     if (prevGenerateTick.current === undefined) {

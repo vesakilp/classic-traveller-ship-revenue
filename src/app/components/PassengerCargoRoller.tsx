@@ -739,8 +739,10 @@ export default function PassengerCargoRoller({
   const prevGenerateTick = useRef<number | undefined>(undefined);
   const canRollRef = useRef(canRoll);
   const handleRollRef = useRef(handleRoll);
-  useEffect(() => { canRollRef.current = canRoll; });
-  useEffect(() => { handleRollRef.current = handleRoll; });
+  useEffect(() => {
+    canRollRef.current = canRoll;
+    handleRollRef.current = handleRoll;
+  });
   useEffect(() => {
     if (generateTick === undefined) return;
     if (prevGenerateTick.current === undefined) {
